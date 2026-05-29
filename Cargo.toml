@@ -1,0 +1,33 @@
+[package]
+name = "lumiknit-cli-edc"
+version = "0.1.0"
+edition = "2024"
+description = "My CLI junk/toy tools"
+readme = "README.md"
+homepage = "https://github.com/lumiknit/lumiknit-cli-edc"
+repository = "https://github.com/lumiknit/lumiknit-cli-edc"
+license = "MIT"
+license-file = "LICENSE"
+categories = ["command-line-utilities"]
+
+[dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "llm"
+path = "src/llm/main.rs"
+
+[[bin]]
+name = "md"
+path = "src/md/main.rs"
+
+[[bin]]
+name = "ww"
+path = "src/ww/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
