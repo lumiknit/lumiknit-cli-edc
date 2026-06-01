@@ -87,18 +87,31 @@ pub fn open(path: &Path) -> std::io::Result<std::process::ExitStatus> {
 }
 
 #[cfg(windows)]
-unsafe fn winapi_get_console_mode(handle: *mut std::ffi::c_void, mode: &mut u32) {
+unsafe fn winapi_get_console_mode(
+    handle: *mut std::ffi::c_void,
+    mode: &mut u32,
+) {
     // SAFETY: linking against kernel32 which is always present on Windows.
-    extern "system" {
-        fn GetConsoleMode(hConsoleHandle: *mut std::ffi::c_void, lpMode: *mut u32) -> i32;
+    unsafe extern "system" {
+        fn GetConsoleMode(
+            hConsoleHandle: *mut std::ffi::c_void,
+            lpMode: *mut u32,
+        ) -> i32;
     }
-    GetConsoleMode(handle, mode);
+    unsafe {
+        GetConsoleMode(handle, mode);
+    }
 }
 
 #[cfg(windows)]
 unsafe fn winapi_set_console_mode(handle: *mut std::ffi::c_void, mode: u32) {
-    extern "system" {
-        fn SetConsoleMode(hConsoleHandle: *mut std::ffi::c_void, dwMode: u32) -> i32;
+    unsafe extern "system" {
+        fn SetConsoleMode(
+            hConsoleHandle: *mut std::ffi::c_void,
+            dwMode: u32,
+        ) -> i32;
     }
-    SetConsoleMode(handle, mode);
+    unsafe {
+        SetConsoleMode(handle, mode);
+    }
 }
