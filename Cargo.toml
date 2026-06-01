@@ -1,6 +1,6 @@
 [package]
 name = "lumiknit-cli-edc"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "My CLI junk/toy tools"
 readme = "README.md"

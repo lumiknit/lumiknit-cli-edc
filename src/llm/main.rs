@@ -16,6 +16,7 @@ Usage: llm [options] [file]
 Options:
   -h        show this help
   -v        show version
+  -D        dry-run: print the curl command instead of executing it
   -init     initialize context file
             -system <msg>  system message
                            (default: OPENAI_DEFAULT_SYSTEM_MESSAGE or
@@ -60,17 +61,36 @@ fn cmd_init(path: &str, system: Option<String>) {
     println!("initialized: {path}");
 }
 
-fn cmd_models(path: &str) {
+fn print_curl(args: &[&str]) {
+    let parts: Vec<String> = std::iter::once("curl".to_string())
+        .chain(args.iter().map(|a| shell_quote(a)))
+        .collect();
+    println!("{}", parts.join(" "));
+}
+
+fn shell_quote(s: &str) -> String {
+    if s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | ',' | '=')) {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
+
+fn cmd_models(path: &str, dry_run: bool) {
     let config = load_or_default(path);
     let base_url = config.resolve_base_url();
     let api_key = config.resolve_api_key();
+    let url = format!("{base_url}/models");
+    let auth = format!("Authorization: Bearer {api_key}");
+    let curl_args = ["-s", &url, "-H", &auth];
+
+    if dry_run {
+        print_curl(&curl_args);
+        return;
+    }
+
     let out = Command::new("curl")
-        .args([
-            "-s",
-            &format!("{base_url}/models"),
-            "-H",
-            &format!("Authorization: Bearer {api_key}"),
-        ])
+        .args(curl_args)
         .output()
         .expect("curl failed");
     let body = String::from_utf8_lossy(&out.stdout);
@@ -156,7 +176,7 @@ fn extract_delta_content(line: &str) -> Option<String> {
     }
 }
 
-fn cmd_chat(path: &str) {
+fn cmd_chat(path: &str, dry_run: bool) {
     let mut config = load_or_default(path);
 
     use std::io::IsTerminal;
@@ -179,24 +199,26 @@ fn cmd_chat(path: &str) {
     let base_url = config.resolve_base_url();
     let api_key = config.resolve_api_key();
     let body = build_json_body(&config);
+    let url = format!("{base_url}/chat/completions");
+    let auth = format!("Authorization: Bearer {api_key}");
+    let curl_args = [
+        "-sN", "-X", "POST", &url,
+        "-H", "Content-Type: application/json",
+        "-H", &auth,
+        "-d", &body,
+    ];
+
+    if dry_run {
+        print_curl(&curl_args);
+        return;
+    }
 
     if is_tty {
         eprintln!("\x1b[1;31m[Assistant]\x1b[0m");
     }
 
     let mut child = Command::new("curl")
-        .args([
-            "-sN",
-            "-X",
-            "POST",
-            &format!("{base_url}/chat/completions"),
-            "-H",
-            "Content-Type: application/json",
-            "-H",
-            &format!("Authorization: Bearer {api_key}"),
-            "-d",
-            &body,
-        ])
+        .args(curl_args)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -232,6 +254,7 @@ fn cmd_chat(path: &str) {
 struct Args {
     help: bool,
     version: bool,
+    dry_run: bool,
     init: bool,
     model: bool,
     system: Option<String>,
@@ -245,6 +268,7 @@ fn parse_args() -> Args {
         match arg.as_str() {
             "-h" | "--help" => a.help = true,
             "-v" => a.version = true,
+            "-D" => a.dry_run = true,
             "-init" => a.init = true,
             "-model" => a.model = true,
             "-system" => a.system = iter.next(),
@@ -267,8 +291,8 @@ fn main() {
     } else if a.init {
         cmd_init(file, a.system);
     } else if a.model {
-        cmd_models(file);
+        cmd_models(file, a.dry_run);
     } else {
-        cmd_chat(file);
+        cmd_chat(file, a.dry_run);
     }
 }
