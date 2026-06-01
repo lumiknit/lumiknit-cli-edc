@@ -1,0 +1,58 @@
+jflat — multi-format structure flattener / unflattener
+
+Usage: jflat [options]
+
+Reads structured data from stdin (TOML, YAML, or JSON) and outputs a
+flat tab-separated table: one leaf value per line.
+
+Format (flatten):
+  <path> TAB <type> TAB <value>
+
+  path    jq-style: "." for a root scalar, ".key", "[0]", ".key[0].sub"
+          Keys containing . [ ] " \ newline or the separator are quoted: ."key"
+  type    null | boolean | number | string | time | object | array
+          object and array only appear for empty containers ({} / [])
+  value   JSON representation of the value; time uses RFC3339
+
+Format (unflatten, -u):
+  Reads the flat table and reconstructs structured output.
+  time type becomes a native TOML datetime in TOML output, plain string elsewhere.
+
+  env format:
+    Outputs KEY=value lines suitable for shell sourcing.
+    Path segments are uppercased; non-alphanumeric chars collapsed to a single '_';
+    leading/trailing '_' stripped. Array indices become bare numbers (e.g. HOSTS_0).
+    String values are single-quoted with embedded ' escaped as '\''.
+    null becomes an empty value (KEY=). Empty object/array entries are skipped.
+    Key collisions (e.g. .foo.bar and .foo_bar both → FOO_BAR) produce duplicate lines.
+
+Options:
+  -h, --help      show this help
+  -v              show version
+  -f <fmt>        force input format: json, yaml, toml  (cannot use with -u)
+  -nosort         keep original key order instead of sorting paths
+  -sep <str>      separator between fields (default: TAB)
+  -u <fmt>        unflatten mode: output as json, yaml, toml, or env
+
+Auto-detection order (when -f is not given): TOML first, then YAML/JSON.
+JSON is a subset of YAML and will be parsed by the YAML parser.
+
+Examples:
+  # flatten a TOML config
+  cat config.toml | jflat
+
+  # flatten and filter errors
+  cat data.json | jflat | grep '"error"'
+
+  # round-trip
+  cat config.toml | jflat | jflat -u toml
+
+  # force YAML parser, no sort
+  cat doc.yaml | jflat -f yaml -nosort
+
+  # unflatten to JSON
+  cat flat.tsv | jflat -u json
+
+  # export config as env vars
+  cat config.json | jflat | jflat -u env
+  cat config.json | jflat | jflat -u env | source /dev/stdin

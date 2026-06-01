@@ -1,0 +1,45 @@
+md — streaming Markdown renderer with code block extraction
+
+Usage: md [options]
+
+Reads Markdown from stdin and renders it with ANSI colors to the
+terminal. Code blocks are automatically extracted to numbered files
+in the current directory.
+
+External Programs:
+  bat   (optional) syntax highlighter for code blocks; auto-detected from PATH
+        install: https://github.com/sharkdp/bat
+
+Options:
+  -h, --help  show this help
+  -v          show version
+  -dry        render only, do not write code block files
+  -p <prefix> prefix for code block filenames (default: .md-)
+              files are named <prefix>001.ext, <prefix>002.ext, ...
+  -C <cmd>    code block printer command (default: auto-detect bat, else ANSI)
+              the command receives code via stdin; --language=<lang> and -
+              are appended automatically when a language is specified
+
+Code blocks:
+  The opening fence is annotated with the output filename:
+    ```python  .md-001.py
+  Files are written when the closing fence is reached.
+
+Examples:
+  # render a markdown file
+  cat README.md | md
+
+  # stream and render LLM output
+  llm | md
+
+  # preview without writing code block files
+  cat TUTORIAL.md | md -dry
+
+  # use a custom prefix for extracted code blocks
+  llm | md -p ./out-
+
+  # use bat with a custom theme for code blocks
+  llm | md -C "bat --theme=Nord"
+
+  # disable external printer, use built-in ANSI
+  llm | md -C cat

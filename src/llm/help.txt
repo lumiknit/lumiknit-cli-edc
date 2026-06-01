@@ -1,0 +1,63 @@
+llm — pipe-friendly persistent LLM chat client
+
+Usage: llm [options] [prefix]
+
+  prefix    file prefix for context and artifacts (default: .llm)
+            context file  : <prefix>.context
+            code artifacts: <prefix>.a-<n>.<ext>
+
+A minimal LLM chat CLI. Reads your message from stdin, sends it to
+a chat-completion compatible API, and streams the response to stdout.
+Conversation history is persisted in the context file so multi-turn
+sessions work across invocations. Code blocks in responses are
+automatically saved as artifact files.
+
+Required External Programs:
+  curl  used to call the API (must be in PATH)
+
+Options:
+  -h, --help  show this help
+  -v          show version
+  -e <msg>    append "\n\n<msg>" to stdin before sending
+              useful for piping file content with an instruction
+  -D          dry-run: print the curl command instead of executing it
+  -init       initialize a new context file
+              -system <msg>  set the system message
+                             (default: LLM_CLI_DEFAULT_SYSTEM_PROMPT or
+                              'You are a helpful assistant')
+  -model      list available models for the configured provider
+
+Providers (set api_url in context file, or LLM_CLI_BASE_URL):
+  openai      https://api.openai.com/v1
+  claude      https://api.anthropic.com/v1
+  grok        https://api.x.ai/v1
+  google      https://generativelanguage.googleapis.com/v1beta/openai
+  openrouter  https://openrouter.ai/api/v1
+  (or any full base URL to a /v1-compatible endpoint)
+
+Env vars (LLM_CLI_* takes precedence over OPENAI_*):
+  LLM_CLI_API_KEY         / OPENAI_API_KEY
+  LLM_CLI_BASE_URL        / OPENAI_BASE_URL
+  LLM_CLI_DEFAULT_MODEL   / OPENAI_DEFAULT_MODEL
+  LLM_CLI_DEFAULT_SYSTEM_PROMPT
+
+Examples:
+  # initialize and start chatting
+  llm -init
+  echo "explain monads briefly" | llm
+
+  # named project context
+  llm -init project
+  echo "add error handling to the snippet" | llm project
+
+  # pipe file content with an instruction
+  cat file.rs | llm -e 'Explain this'
+
+  # compose message in editor, render response as markdown
+  ww | llm | md
+
+  # inspect the curl command without sending
+  echo "hello" | llm -D
+
+  # switch provider via env
+  LLM_CLI_BASE_URL=openrouter LLM_CLI_API_KEY=sk-... llm -model

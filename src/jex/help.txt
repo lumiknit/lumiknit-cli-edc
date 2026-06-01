@@ -1,0 +1,48 @@
+jex — reusable regex-to-JSON stream filter
+
+Usage: jex [options] ( [-a|-1] <template.json> | [-a|-1] -e '<json>' )+
+
+Reads lines from stdin and applies one or more JSON templates, each
+matching via regex patterns. Outputs zero or more compact JSON objects
+per input line (NDJSON).
+
+String values in templates are interpreted as:
+  "literal"              always emitted as-is
+  "//literal"            literal string starting with / (escape leading /)
+  "/pattern/flags"       first match, or null if no match
+  "/pattern/replace/flags"  capture-group expand, or null if no match
+
+Regex flags:
+  i   case-insensitive
+  m   multiline (^ and $ match each line boundary)
+  s   dot matches newline
+
+In replace, use $0 for the whole match, $1 $2 ... for capture groups,
+${name} for named groups. Write \/ for a literal / inside pattern or replace.
+
+Options:
+  -h, --help    show this help
+  -v            show version
+  -g            global mode: treat entire stdin as one input
+
+Rule options (apply to the immediately following template):
+  -a            Always: output the rule result regardless of matches
+                (non-matching regex fields become null)
+  -1            At least one: output if at least one regex field matches
+  (default)     All match: output only if every regex field matches
+
+Multiple templates are evaluated independently for each input line,
+each producing at most one output line.
+
+Examples:
+  # single template, default mode (all fields must match)
+  tail -f app.log | jex template.json
+
+  # two templates: first always outputs, second needs all fields to match
+  tail -f app.log | jex -a errors.json events.json
+
+  # inline template with at-least-one mode
+  echo '2024-01-15 ERROR foo' | jex -1 -e '{"level":"/(ERROR|WARN)/","ts":"/\\d{4}-\\d{2}-\\d{2}/"}'
+
+  # mix of file and inline
+  jex -a f1.json -1 -e '{...}' f2.json

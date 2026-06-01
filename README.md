@@ -1,54 +1,68 @@
 # lumiknit's CLI EDC
 
-My CLI junk/toy tools!
+My CLI toy but useful tools, which can be used combined with stdin/out as UNIX philosophy!
 
-## Build or Install
+
+## Installation
+
+Install rust & cargo first.
+
+```bash
+cargo install --git https://github.com/lumiknit/lumiknit-cli-edc
+```
+
+Or, clone the repository and run:
 
 ```bash
 cargo build --release
-
 cargo install --path .
 ```
 
-## Which programs?
+## Tools
 
-### `llm`
+For more details, please read help message (Run command with `-h`).
 
-Minimal LLM chat completion CLI.
-Manages a chat context file (default: `llm.context`)
-and streams responses via curl.
-Support OpenAI-compatible APIs.
+- `llm`: Minimal llm chat CLI for any OpenAI compatible API. Require `curl`
+- `md`: Streaming markdown to ANSI Terminal renderer. Better with `bat`.
+- `ww`: *Wait, what?* Stdin -> `$EDITOR` -> Stdout. Similar to vipe, but receive file extension.
+- `jex`: Filter with 'JSON structured with regex`.
+- `jflat`: Convert JSON-like (yaml, toml) data to flat path, and unflatten back!
 
-You may need to set some environments:
+## Example of Combinations
 
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `OPENAI_DEFAULT_MODEL`
-- `OPENAI_DEFAULT_SYSTEM_PROMPT`
-
-### `md`
-
-Markdown to ANSI Terminal renderer.
-Takes stdin and print colorized document in terminal.
-All code blocks are automatically saved to `md-code-<NNN>.<EXT>`
-
-### `ww`
-
-*Wait, what?*
-`ww [ext]` works as vipe: reads stdin into a temp file, open `$VISUAL` or `$EDITOR` with the file,
-and if the editor closed with exit code 0, prints the result to stdout.
-However, this set the file extension as `ext`
-
-## Combinations
-
-To take input from editor, and run llm and print with color,
+If you want to write question in cli editor then run LLM with pretty printed markdown,
 
 ```sh
+# Open editor 
 ww md | llm | md
+
+# Then, you can run code block with .md-* file
+# python3 .md-001.py
 ```
 
-Modify llm's answer and rerun
+Run LLM and edit then llm again.
 
 ```sh
-echo "Question!" | llm | ww md | llm
+echo "Question" | llm | ww md | llm
+```
+
+Filter some events from the logs
+
+```sh
+cat <<-EOF > events.json
+{"message": "/[A-Za-z0-9]+/"}
+EOF # Only filter alphanum from plain text, and make as jsonl with message singleton
+cat app.log | jex -a events.json | llm -e "Summarize these errors"
+```
+
+Destruct and restruct complex data file
+
+```sh
+cat value.toml | jflat | grep 'number' | jflat -u yaml
+```
+
+Convert data file to env
+
+```sh
+cat value.toml | jflat | jflat -u env
 ```

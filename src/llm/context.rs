@@ -19,14 +19,25 @@ pub struct ChatConfig {
     pub messages: Vec<Message>,
 }
 
+fn env_fallback(primary: &str, fallback: &str) -> Option<String> {
+    std::env::var(primary)
+        .ok()
+        .or_else(|| std::env::var(fallback).ok())
+}
+
 impl ChatConfig {
     pub fn new() -> Self {
+        let system = std::env::var("LLM_CLI_DEFAULT_SYSTEM_PROMPT")
+            .unwrap_or_else(|_| "You are a helpful assistant".to_string());
         ChatConfig {
-            model: std::env::var("OPENAI_DEFAULT_MODEL")
-                .unwrap_or_else(|_| "gpt-5.5".to_string()),
+            model: env_fallback(
+                "LLM_CLI_DEFAULT_MODEL",
+                "OPENAI_DEFAULT_MODEL",
+            )
+            .unwrap_or_else(|| "gpt-4.1".to_string()),
             api_key_env: None,
             api_url: None,
-            messages: vec![],
+            messages: vec![Message::new("system", system)],
         }
     }
 
@@ -91,11 +102,13 @@ impl ChatConfig {
 
     pub fn resolve_base_url(&self) -> String {
         let raw = self.api_url.clone().unwrap_or_else(|| {
-            std::env::var("OPENAI_BASE_URL")
-                .unwrap_or_else(|_| "openai".to_string())
+            env_fallback("LLM_CLI_BASE_URL", "OPENAI_BASE_URL")
+                .unwrap_or_else(|| "openai".to_string())
         });
         match raw.as_str() {
             "openai" => "https://api.openai.com/v1".to_string(),
+            "claude" => "https://api.anthropic.com/v1".to_string(),
+            "grok" => "https://api.x.ai/v1".to_string(),
             "google" => {
                 "https://generativelanguage.googleapis.com/v1beta/openai"
                     .to_string()
@@ -106,9 +119,15 @@ impl ChatConfig {
     }
 
     pub fn resolve_api_key(&self) -> String {
-        let env = self.api_key_env.as_deref().unwrap_or("OPENAI_API_KEY");
-        std::env::var(env).unwrap_or_else(|_| {
-            eprintln!("env '{env}' is not set");
+        // if api_key_env is set in the context file, use only that var
+        if let Some(env) = &self.api_key_env {
+            return std::env::var(env).unwrap_or_else(|_| {
+                eprintln!("env '{env}' is not set");
+                std::process::exit(1);
+            });
+        }
+        env_fallback("LLM_CLI_API_KEY", "OPENAI_API_KEY").unwrap_or_else(|| {
+            eprintln!("LLM_CLI_API_KEY (or OPENAI_API_KEY) is not set");
             std::process::exit(1);
         })
     }

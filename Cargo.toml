@@ -1,17 +1,22 @@
 [package]
 name = "lumiknit-cli-edc"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 description = "My CLI junk/toy tools"
 readme = "README.md"
 homepage = "https://github.com/lumiknit/lumiknit-cli-edc"
 repository = "https://github.com/lumiknit/lumiknit-cli-edc"
 license = "MIT"
-license-file = "LICENSE"
 categories = ["command-line-utilities"]
 
 [dependencies]
 tempfile = "3"
+serde_json = "1"
+regex = "1"
+serde_yml = "0.0"
+toml = "1.1"
+libc = "0.2.186"
+which = "8.0.2"
 
 [[bin]]
 name = "llm"
@@ -24,6 +29,14 @@ path = "src/md/main.rs"
 [[bin]]
 name = "ww"
 path = "src/ww/main.rs"
+
+[[bin]]
+name = "jex"
+path = "src/jex/main.rs"
+
+[[bin]]
+name = "jflat"
+path = "src/jflat/main.rs"
 
 [profile.release]
 opt-level = "z"

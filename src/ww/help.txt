@@ -1,0 +1,29 @@
+ww — drop-in editor for Unix pipelines
+
+Usage: ww [options] [ext]
+
+  ext     file extension for the temp file (e.g. md, py)
+
+Reads stdin into a temp file, opens $EDITOR, then writes the edited
+result to stdout. The temp file persists until the editor exits so
+editors that do atomic saves (rename-on-write) work correctly.
+
+Options:
+  -h, --help  show this help
+  -v          show version
+
+Environment:
+  VISUAL, EDITOR   editor to use (default: vi)
+
+Examples:
+  # open an empty buffer, write something, pipe it forward
+  ww | cat
+
+  # edit LLM output before saving
+  llm | ww md > result.md
+
+  # compose a git commit message in your editor
+  ww | git commit -F -
+
+  # edit a file and keep a copy
+  cat notes.txt | ww md | tee notes-edited.txt
