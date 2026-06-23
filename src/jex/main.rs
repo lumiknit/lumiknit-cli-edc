@@ -64,19 +64,21 @@ fn parse_args() -> Option<Args> {
                 });
                 let mode = pending_mode;
                 pending_mode = Mode::AllMatch;
-                let compiled = compile(&load_template(&src)).unwrap_or_else(|e| {
-                    eprintln!("error in template: {e}");
-                    std::process::exit(1);
-                });
+                let compiled =
+                    compile(&load_template(&src)).unwrap_or_else(|e| {
+                        eprintln!("error in template: {e}");
+                        std::process::exit(1);
+                    });
                 rules.push(Rule { mode, compiled });
             }
             path => {
                 let mode = pending_mode;
                 pending_mode = Mode::AllMatch;
-                let compiled = compile(&load_template_file(path)).unwrap_or_else(|e| {
-                    eprintln!("error in {path}: {e}");
-                    std::process::exit(1);
-                });
+                let compiled = compile(&load_template_file(path))
+                    .unwrap_or_else(|e| {
+                        eprintln!("error in {path}: {e}");
+                        std::process::exit(1);
+                    });
                 rules.push(Rule { mode, compiled });
             }
         }

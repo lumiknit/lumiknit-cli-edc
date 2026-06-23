@@ -67,16 +67,24 @@ impl CodePrinter {
                         .args(&args)
                         .stdin(Stdio::piped())
                         .stdout(Stdio::piped())
+                        .stderr(Stdio::null())
                         .spawn()
                         .and_then(|mut child| {
                             child
                                 .stdin
                                 .take()
                                 .ok_or_else(|| {
-                                    std::io::Error::other("failed to open child stdin")
+                                    std::io::Error::other(
+                                        "failed to open child stdin",
+                                    )
                                 })?
                                 .write_all(content.as_bytes())?;
-                            Ok(child.wait_with_output()?.stdout)
+                            let output = child.wait_with_output()?;
+                            if output.status.success() {
+                                Ok(output.stdout)
+                            } else {
+                                Err(std::io::Error::other("non-zero exit"))
+                            }
                         });
 
                     match result {
@@ -152,7 +160,13 @@ pub fn alloc_filename(prefix: &str, ext: &str) -> String {
     unreachable!()
 }
 
-pub fn apply(out: &mut impl Write, bold: bool, italic: bool, code: bool, strike: bool) {
+pub fn apply(
+    out: &mut impl Write,
+    bold: bool,
+    italic: bool,
+    code: bool,
+    strike: bool,
+) {
     write!(out, "{RESET}").ok();
     if code {
         write!(out, "{GREEN}").ok();
@@ -169,68 +183,91 @@ pub fn apply(out: &mut impl Write, bold: bool, italic: bool, code: bool, strike:
     }
 }
 
-pub fn render_inline(text: &str, out: &mut impl Write) {
-    let mut chars = text.chars().peekable();
-    let (mut bold, mut italic, mut code, mut strike) = (false, false, false, false);
+fn osc8_link(url: &str, label: &str, out: &mut impl Write) {
+    write!(out, "{CYAN}\x1b[4m[{label}]({url}){RESET}").ok();
+}
 
-    while let Some(c) = chars.next() {
+pub fn render_inline(text: &str, out: &mut impl Write) {
+    let mut rest = text;
+    let (mut bold, mut italic, mut code, mut strike) =
+        (false, false, false, false);
+
+    while !rest.is_empty() {
+        // bare URL
+        if !code
+            && (rest.starts_with("http://") || rest.starts_with("https://"))
+        {
+            let end = rest
+                .find(|c: char| c.is_ascii_whitespace())
+                .unwrap_or(rest.len());
+            let url = &rest[..end];
+            write!(out, "{CYAN}\x1b[4m{url}{RESET}").ok();
+            rest = &rest[end..];
+            continue;
+        }
+
+        let c = rest.chars().next().unwrap();
+        rest = &rest[c.len_utf8()..];
+
         match c {
             '`' => {
                 code = !code;
                 apply(out, bold, italic, code, strike);
             }
             '*' | '_' if !code => {
-                if chars.peek() == Some(&c) {
-                    chars.next();
+                if rest.starts_with(c) {
+                    rest = &rest[c.len_utf8()..];
                     bold = !bold;
                 } else {
                     italic = !italic;
                 }
                 apply(out, bold, italic, code, strike);
             }
-            '~' if !code && chars.peek() == Some(&'~') => {
-                chars.next();
+            '~' if !code && rest.starts_with('~') => {
+                rest = &rest[1..];
                 strike = !strike;
                 apply(out, bold, italic, code, strike);
             }
             '[' if !code => {
-                let mut link_text = String::new();
-                let mut consumed = vec!['['];
-                let mut is_link = false;
-                let mut url = String::new();
-                loop {
-                    match chars.next() {
-                        None => break,
-                        Some(']') => {
-                            consumed.push(']');
-                            if chars.peek() == Some(&'(') {
-                                chars.next();
-                                loop {
-                                    match chars.next() {
-                                        None => break,
-                                        Some(')') => {
-                                            is_link = true;
-                                            break;
-                                        }
-                                        Some(c) => url.push(c),
-                                    }
-                                }
-                            }
-                            break;
-                        }
-                        Some(c) => {
-                            link_text.push(c);
-                            consumed.push(c);
-                        }
+                // parse [text](url) or ![alt](url)
+                let bracket_end = rest.find(']');
+                if let Some(bi) = bracket_end {
+                    let link_text = &rest[..bi];
+                    let after = &rest[bi + 1..];
+                    if let Some(paren_end) =
+                        after.strip_prefix('(').and_then(|s| s.find(')'))
+                    {
+                        let url = &after[1..paren_end + 1];
+                        osc8_link(url, link_text, out);
+                        rest = &after[paren_end + 2..];
+                        apply(out, bold, italic, code, strike);
+                    } else {
+                        write!(out, "[").ok();
                     }
-                }
-                if is_link {
-                    write!(out, "{CYAN}[{link_text}]({url}){RESET}").ok();
-                    apply(out, bold, italic, code, strike);
                 } else {
-                    for c in consumed {
-                        write!(out, "{c}").ok();
+                    write!(out, "[").ok();
+                }
+            }
+            '!' if !code && rest.starts_with('[') => {
+                rest = &rest[1..];
+                let bracket_end = rest.find(']');
+                if let Some(bi) = bracket_end {
+                    let alt = &rest[..bi];
+                    let after = &rest[bi + 1..];
+                    if let Some(paren_end) =
+                        after.strip_prefix('(').and_then(|s| s.find(')'))
+                    {
+                        let url = &after[1..paren_end + 1];
+                        let label = if alt.is_empty() { "image" } else { alt };
+                        write!(out, "🖼 ").ok();
+                        osc8_link(url, label, out);
+                        rest = &after[paren_end + 2..];
+                        apply(out, bold, italic, code, strike);
+                    } else {
+                        write!(out, "![").ok();
                     }
+                } else {
+                    write!(out, "![").ok();
                 }
             }
             c => {
@@ -326,7 +363,7 @@ impl Renderer {
                 self.in_code_block = None;
 
                 self.printer.print(&lang, &content, out);
-                writeln!(out, "{GREEN}{line}{RESET}").ok();
+                writeln!(out, "{BOLD}{GREEN}{line}{RESET}").ok();
                 out.flush().ok();
 
                 if !self.dry {
@@ -353,9 +390,13 @@ impl Renderer {
             } else {
                 format!("{fence_char}{lang}  \x1b[4m{filename}\x1b[24m")
             };
-            writeln!(out, "{GREEN}{display}{RESET}").ok();
+            writeln!(out, "{BOLD}{GREEN}{display}{RESET}").ok();
             out.flush().ok();
-            self.in_code_block = Some(CodeBlock { filename, lang, lines: vec![] });
+            self.in_code_block = Some(CodeBlock {
+                filename,
+                lang,
+                lines: vec![],
+            });
             return;
         }
 
@@ -391,7 +432,10 @@ impl Renderer {
             return;
         }
 
-        if line.starts_with("- ") || line.starts_with("* ") || line.starts_with("+ ") {
+        if line.starts_with("- ")
+            || line.starts_with("* ")
+            || line.starts_with("+ ")
+        {
             self.begin_block(BlockKind::List, out);
             write!(out, "{YELLOW}{}{RESET}", &line[..1]).ok();
             render_inline(&line[1..], out);

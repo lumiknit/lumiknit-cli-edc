@@ -45,13 +45,18 @@ pub fn parse_field(s: &str) -> Result<Field, String> {
     let (replace_opt, flags) = match rest {
         None => (None, ""),
         Some(rest) => match split_on_slash(rest) {
-            (replace_raw, Some(flags)) => (Some(unescape_slash(replace_raw)), flags),
+            (replace_raw, Some(flags)) => {
+                (Some(unescape_slash(replace_raw)), flags)
+            }
             (flags, None) => (None, flags),
         },
     };
     let pattern = unescape_slash(pattern_raw);
     build_regex(&pattern, flags)
-        .map(|re| Field::Regex { re, replace: replace_opt })
+        .map(|re| Field::Regex {
+            re,
+            replace: replace_opt,
+        })
         .map_err(|e| format!("invalid regex {pattern:?}: {e}"))
 }
 
@@ -74,7 +79,8 @@ pub fn compile(v: &Value) -> Result<CompiledValue, String> {
             Ok(CompiledValue::Object(fields))
         }
         Value::Array(arr) => {
-            let items = arr.iter().map(compile).collect::<Result<Vec<_>, _>>()?;
+            let items =
+                arr.iter().map(compile).collect::<Result<Vec<_>, _>>()?;
             Ok(CompiledValue::Array(items))
         }
         Value::String(s) => parse_field(s).map(CompiledValue::Field),

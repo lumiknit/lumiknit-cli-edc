@@ -57,21 +57,15 @@ fn regex_find_match() {
 #[test]
 fn regex_no_match_all_mode() {
     // AllMatch: all regex fields must match → None if any fails
-    let out = apply_rule(
-        r#"{"x":"/nothere/"}"#,
-        Mode::AllMatch,
-        "something else",
-    );
+    let out =
+        apply_rule(r#"{"x":"/nothere/"}"#, Mode::AllMatch, "something else");
     assert_eq!(out, None);
 }
 
 #[test]
 fn regex_replace_capture_group() {
-    let out = apply_rule(
-        r#"{"v":"/user=(\\w+)/$1/"}"#,
-        Mode::AllMatch,
-        "user=alice",
-    );
+    let out =
+        apply_rule(r#"{"v":"/user=(\\w+)/$1/"}"#, Mode::AllMatch, "user=alice");
     assert_eq!(out, Some(r#"{"v":"alice"}"#.to_string()));
 }
 
@@ -119,8 +113,7 @@ fn nested_object_template() {
 
 #[test]
 fn array_template() {
-    let out =
-        apply_rule(r#"["/\\w+/","/\\d+/"]"#, Mode::AllMatch, "abc 123");
+    let out = apply_rule(r#"["/\\w+/","/\\d+/"]"#, Mode::AllMatch, "abc 123");
     assert_eq!(out, Some(r#"["abc","123"]"#.to_string()));
 }
 

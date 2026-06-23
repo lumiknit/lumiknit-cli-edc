@@ -4,9 +4,7 @@ fn flatten(input: &str) -> Vec<String> {
     let entries = do_flatten(input, None, true).expect("flatten failed");
     entries
         .iter()
-        .map(|e| {
-            format!("{}\t{}\t{}", fmt_path(&e.path, "\t"), e.typ, e.val)
-        })
+        .map(|e| format!("{}\t{}\t{}", fmt_path(&e.path, "\t"), e.typ, e.val))
         .collect()
 }
 
@@ -15,9 +13,7 @@ fn roundtrip_json(input: &str) -> serde_json::Value {
     let entries = do_flatten(input, None, true).expect("flatten failed");
     let flat: String = entries
         .iter()
-        .map(|e| {
-            format!("{}\t{}\t{}\n", fmt_path(&e.path, "\t"), e.typ, e.val)
-        })
+        .map(|e| format!("{}\t{}\t{}\n", fmt_path(&e.path, "\t"), e.typ, e.val))
         .collect();
     let json_str =
         do_unflatten(&flat, Fmt::Json, "\t").expect("unflatten failed");
@@ -29,9 +25,11 @@ fn roundtrip_json(input: &str) -> serde_json::Value {
 #[test]
 fn flat_simple_object() {
     let lines = flatten(r#"{"a":1,"b":"hello"}"#);
-    assert!(lines.iter().any(|l| l.contains(".a")
-        && l.contains("number")
-        && l.contains("1")));
+    assert!(
+        lines.iter().any(|l| l.contains(".a")
+            && l.contains("number")
+            && l.contains("1"))
+    );
     assert!(lines.iter().any(|l| l.contains(".b")
         && l.contains("string")
         && l.contains("hello")));
@@ -197,14 +195,17 @@ fn roundtrip_empty_containers() {
 
 fn env(json: &str) -> Vec<(String, String)> {
     let entries = do_flatten(json, None, true).expect("flatten failed");
-    let flat: String = entries.iter().map(|e| {
-        format!("{}\t{}\t{}\n", fmt_path(&e.path, "\t"), e.typ, e.val)
-    }).collect();
+    let flat: String = entries
+        .iter()
+        .map(|e| format!("{}\t{}\t{}\n", fmt_path(&e.path, "\t"), e.typ, e.val))
+        .collect();
     let out = do_unflatten_env(&flat, "\t").expect("unflatten_env failed");
-    out.lines().map(|l| {
-        let (k, v) = l.split_once('=').unwrap();
-        (k.to_string(), v.to_string())
-    }).collect()
+    out.lines()
+        .map(|l| {
+            let (k, v) = l.split_once('=').unwrap();
+            (k.to_string(), v.to_string())
+        })
+        .collect()
 }
 
 #[test]
@@ -285,8 +286,7 @@ fn env_duplicate_keys_both_output() {
 
 #[test]
 fn parse_fmt_path_roundtrip() {
-    let segs =
-        vec![Seg::Key("a".into()), Seg::Idx(0), Seg::Key("b".into())];
+    let segs = vec![Seg::Key("a".into()), Seg::Idx(0), Seg::Key("b".into())];
     let s = fmt_path(&segs, "\t");
     let parsed = parse_path(&s);
     assert_eq!(parsed, segs);

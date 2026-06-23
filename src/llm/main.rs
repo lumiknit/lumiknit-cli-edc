@@ -23,7 +23,9 @@ fn load_or_default(prefix: &str) -> ChatConfig {
 
 fn save(prefix: &str, config: &ChatConfig) {
     let path = context_path(prefix);
-    fs::write(&path, config.serialize()).expect("failed to save context file");
+    let tmp = format!("{path}.tmp");
+    fs::write(&tmp, config.serialize()).expect("failed to write context file");
+    fs::rename(&tmp, &path).expect("failed to rename context file");
 }
 
 fn cmd_init(prefix: &str, system: Option<String>) {
@@ -141,6 +143,8 @@ fn cmd_chat(prefix: &str, dry_run: bool, extra: Option<&str>) {
     use std::io::IsTerminal;
     let is_tty = io::stdin().is_terminal();
     if is_tty {
+        let base_url = config.resolve_base_url();
+        eprintln!("host: {base_url}  model: {}", config.model);
         eprintln!("enter message, then EOF (^D) to send:");
     }
     let mut input = String::new();
@@ -244,6 +248,10 @@ fn cmd_chat(prefix: &str, dry_run: bool, extra: Option<&str>) {
     println!();
     child.wait().ok();
 
+    if reply.is_empty() {
+        eprintln!("empty response, context not saved");
+        std::process::exit(1);
+    }
     config.messages.push(Message::new("assistant", &reply));
     save(prefix, &config);
 }

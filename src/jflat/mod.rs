@@ -138,7 +138,11 @@ pub fn fmt_float(f: f64) -> String {
 
 // ---- Flatten TOML ---------------------------------------------------------
 
-pub fn flatten_toml(v: &toml::Value, path: &mut Vec<Seg>, out: &mut Vec<Entry>) {
+pub fn flatten_toml(
+    v: &toml::Value,
+    path: &mut Vec<Seg>,
+    out: &mut Vec<Entry>,
+) {
     match v {
         toml::Value::String(s) => out.push(Entry {
             path: path.clone(),
@@ -471,16 +475,20 @@ pub fn bash_quote(s: &str) -> String {
 pub fn do_unflatten_env(input: &str, sep: &str) -> Result<String, String> {
     let mut out = String::new();
     for line in input.lines() {
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         let (path_s, typ, val) = split_line(line, sep)
             .ok_or_else(|| format!("malformed line: {line}"))?;
         let path = parse_path(path_s);
         let key = path_to_env_key(&path);
-        if key.is_empty() { continue; }
+        if key.is_empty() {
+            continue;
+        }
         let value = match typ {
-            "null"    => String::new(),
+            "null" => String::new(),
             "boolean" | "number" | "time" => val.to_string(),
-            "string"  => bash_quote(&jsonlite::unquote(val)),
+            "string" => bash_quote(&jsonlite::unquote(val)),
             "object" | "array" => continue,
             other => return Err(format!("unknown type: {other}")),
         };
