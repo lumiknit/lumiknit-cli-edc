@@ -1,6 +1,6 @@
 [package]
 name = "lumiknit-cli-edc"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 description = "My CLI junk/toy tools"
 readme = "README.md"
@@ -17,10 +17,15 @@ serde_yml = "0.0"
 toml = "1.1"
 libc = "0.2.186"
 which = "8.0.2"
+interprocess = "2.4.3"
 
 [[bin]]
 name = "llm"
 path = "src/llm/main.rs"
+
+[[bin]]
+name = "po"
+path = "src/po/main.rs"
 
 [[bin]]
 name = "md"

@@ -147,7 +147,7 @@ pub fn flatten_toml(
         toml::Value::String(s) => out.push(Entry {
             path: path.clone(),
             typ: "string",
-            val: jsonlite::quote_readable(s),
+            val: jsonlite::quote(s),
         }),
         toml::Value::Integer(i) => out.push(Entry {
             path: path.clone(),
@@ -217,7 +217,7 @@ pub fn flatten_yaml(
         serde_yml::Value::String(s) => out.push(Entry {
             path: path.clone(),
             typ: "string",
-            val: jsonlite::quote_readable(s),
+            val: jsonlite::quote(s),
         }),
         serde_yml::Value::Number(n) => {
             let f = n.as_f64();

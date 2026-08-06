@@ -101,7 +101,7 @@ fn build_json_body(config: &ChatConfig) -> String {
             format!(
                 "{{\"role\":{},\"content\":{}}}",
                 jsonlite::quote(&m.role),
-                jsonlite::quote_readable(&m.content)
+                jsonlite::quote(&m.content)
             )
         })
         .collect::<Vec<_>>()
@@ -137,7 +137,12 @@ fn extract_delta_content(line: &str) -> Option<String> {
     }
 }
 
-fn cmd_chat(prefix: &str, dry_run: bool, extra: Option<&str>) {
+fn cmd_chat(
+    prefix: &str,
+    dry_run: bool,
+    extra: Option<&str>,
+    echo_input: bool,
+) {
     let mut config = load_or_default(prefix);
 
     use std::io::IsTerminal;
@@ -151,6 +156,10 @@ fn cmd_chat(prefix: &str, dry_run: bool, extra: Option<&str>) {
     io::stdin()
         .read_to_string(&mut input)
         .expect("failed to read stdin");
+    if echo_input {
+        print!("{input}");
+        print!("\n---\n");
+    }
     let input = input.trim().to_string();
     let input = match extra {
         Some(e) => format!("{input}\n\n{e}"),
@@ -266,6 +275,7 @@ struct Args {
     system: Option<String>,
     extra: Option<String>,
     prefix: Option<String>,
+    echo_input: bool,
 }
 
 fn parse_args() -> Args {
@@ -280,6 +290,7 @@ fn parse_args() -> Args {
             "-model" => a.model = true,
             "-system" => a.system = iter.next(),
             "-e" => a.extra = iter.next(),
+            "-i" => a.echo_input = true,
             _ => a.prefix = Some(arg),
         }
     }
@@ -301,6 +312,6 @@ fn main() {
     } else if a.model {
         cmd_models(prefix, a.dry_run);
     } else {
-        cmd_chat(prefix, a.dry_run, a.extra.as_deref());
+        cmd_chat(prefix, a.dry_run, a.extra.as_deref(), a.echo_input);
     }
 }

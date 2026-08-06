@@ -1,41 +1,6 @@
-/// Encode a string as a JSON string literal, escaping all non-ASCII
-/// as \uXXXX (or surrogate pairs for codepoints above U+FFFF).
-pub fn quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\x08' => out.push_str("\\b"),
-            '\x0C' => out.push_str("\\f"),
-            c if (c as u32) < 0x20 => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
-            }
-            c if c.is_ascii() => out.push(c),
-            c => {
-                let u = c as u32;
-                if u <= 0xFFFF {
-                    out.push_str(&format!("\\u{:04x}", u));
-                } else {
-                    let u = u - 0x10000;
-                    let high = 0xD800 + (u >> 10);
-                    let low = 0xDC00 + (u & 0x3FF);
-                    out.push_str(&format!("\\u{:04x}\\u{:04x}", high, low));
-                }
-            }
-        }
-    }
-    out.push('"');
-    out
-}
-
 /// Encode a string as a JSON string literal, keeping printable UTF-8
 /// characters as-is. Only escapes control characters, `"`, and `\`.
-pub fn quote_readable(s: &str) -> String {
+pub fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {

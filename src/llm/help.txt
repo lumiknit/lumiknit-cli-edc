@@ -20,6 +20,9 @@ Options:
   -v          show version
   -e <msg>    append "\n\n<msg>" to stdin before sending
               useful for piping file content with an instruction
+  -i          echo stdin back to stdout, then "---", before the reply
+              useful when piping through an editor (e.g. helix) that
+              would otherwise discard the original input
   -D          dry-run: print the curl command instead of executing it
   -init       initialize a new context file
               -system <msg>  set the system message
