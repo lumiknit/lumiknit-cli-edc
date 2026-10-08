@@ -1,6 +1,9 @@
 use crate::jsonlite;
 use std::collections::HashSet;
 
+pub mod sv;
+pub use sv::SvOpts;
+
 // ---- Segment / Path -------------------------------------------------------
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -264,6 +267,8 @@ pub enum Fmt {
     Yaml,
     Toml,
     Env,
+    Csv,
+    Tsv,
 }
 
 impl Fmt {
@@ -273,6 +278,17 @@ impl Fmt {
             "yaml" | "yml" => Some(Fmt::Yaml),
             "toml" => Some(Fmt::Toml),
             "env" => Some(Fmt::Env),
+            "csv" => Some(Fmt::Csv),
+            "tsv" => Some(Fmt::Tsv),
+            _ => None,
+        }
+    }
+
+    /// Default SV options for this format, if it is an SV format.
+    pub fn default_sv_opts(self) -> Option<SvOpts> {
+        match self {
+            Fmt::Csv => Some(SvOpts::csv()),
+            Fmt::Tsv => Some(SvOpts::tsv()),
             _ => None,
         }
     }
@@ -282,9 +298,18 @@ pub fn do_flatten(
     input: &str,
     force: Option<Fmt>,
     sort: bool,
+    sv_opts: Option<SvOpts>,
 ) -> Result<Vec<Entry>, String> {
     let mut path = vec![];
     let mut out = vec![];
+    if let Some(fmt @ (Fmt::Csv | Fmt::Tsv)) = force {
+        let opts = sv_opts.or(fmt.default_sv_opts()).unwrap();
+        sv::flatten_sv(input, &opts, &mut path, &mut out)?;
+        if sort {
+            out.sort_by(|a, b| a.path.cmp(&b.path));
+        }
+        return Ok(out);
+    }
     let use_toml = match force {
         Some(Fmt::Toml) => true,
         Some(_) => false,
@@ -501,6 +526,7 @@ pub fn do_unflatten(
     input: &str,
     out_fmt: Fmt,
     sep: &str,
+    sv_opts: Option<SvOpts>,
 ) -> Result<String, String> {
     let mut root = serde_json::Value::Null;
     let mut times: HashSet<String> = HashSet::new();
@@ -526,6 +552,10 @@ pub fn do_unflatten(
         Fmt::Toml => {
             let tv = json_to_toml(&root, &[], &times)?;
             toml::to_string_pretty(&tv).map_err(|e| e.to_string())
+        }
+        Fmt::Csv | Fmt::Tsv => {
+            let opts = sv_opts.or(out_fmt.default_sv_opts()).unwrap();
+            sv::unflatten_sv(&root, &opts)
         }
         Fmt::Env => unreachable!("env handled before do_unflatten"),
     }

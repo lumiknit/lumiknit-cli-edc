@@ -1,7 +1,7 @@
 use lumiknit_cli_edc::jflat::*;
 
 fn flatten(input: &str) -> Vec<String> {
-    let entries = do_flatten(input, None, true).expect("flatten failed");
+    let entries = do_flatten(input, None, true, None).expect("flatten failed");
     entries
         .iter()
         .map(|e| format!("{}\t{}\t{}", fmt_path(&e.path, "\t"), e.typ, e.val))
@@ -10,13 +10,13 @@ fn flatten(input: &str) -> Vec<String> {
 
 fn roundtrip_json(input: &str) -> serde_json::Value {
     // flatten then unflatten back to JSON
-    let entries = do_flatten(input, None, true).expect("flatten failed");
+    let entries = do_flatten(input, None, true, None).expect("flatten failed");
     let flat: String = entries
         .iter()
         .map(|e| format!("{}\t{}\t{}\n", fmt_path(&e.path, "\t"), e.typ, e.val))
         .collect();
     let json_str =
-        do_unflatten(&flat, Fmt::Json, "\t").expect("unflatten failed");
+        do_unflatten(&flat, Fmt::Json, "\t", None).expect("unflatten failed");
     serde_json::from_str(&json_str).expect("invalid json from unflatten")
 }
 
@@ -105,7 +105,7 @@ fn flat_key_with_special_chars() {
 #[test]
 fn flat_sorted_keys() {
     // do_flatten with sort=true must output paths in lexicographic order
-    let entries = do_flatten(r#"{"z":1,"a":2,"m":3}"#, None, true).unwrap();
+    let entries = do_flatten(r#"{"z":1,"a":2,"m":3}"#, None, true, None).unwrap();
     let keys: Vec<_> =
         entries.iter().map(|e| fmt_path(&e.path, "\t")).collect();
     let mut sorted = keys.clone();
@@ -118,7 +118,7 @@ fn flat_sorted_keys() {
 #[test]
 fn unflatten_simple() {
     let flat = ".a\tnumber\t1\n.b\tstring\t\"hello\"\n";
-    let json_str = do_unflatten(flat, Fmt::Json, "\t").unwrap();
+    let json_str = do_unflatten(flat, Fmt::Json, "\t", None).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(v["a"], serde_json::json!(1));
     assert_eq!(v["b"], serde_json::json!("hello"));
@@ -127,7 +127,7 @@ fn unflatten_simple() {
 #[test]
 fn unflatten_array() {
     let flat = "[0]\tnumber\t10\n[1]\tnumber\t20\n";
-    let json_str = do_unflatten(flat, Fmt::Json, "\t").unwrap();
+    let json_str = do_unflatten(flat, Fmt::Json, "\t", None).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(v, serde_json::json!([10, 20]));
 }
@@ -135,7 +135,7 @@ fn unflatten_array() {
 #[test]
 fn unflatten_empty_object() {
     let flat = ".x\tobject\t{}\n";
-    let json_str = do_unflatten(flat, Fmt::Json, "\t").unwrap();
+    let json_str = do_unflatten(flat, Fmt::Json, "\t", None).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(v["x"], serde_json::json!({}));
 }
@@ -143,7 +143,7 @@ fn unflatten_empty_object() {
 #[test]
 fn unflatten_skips_blank_lines() {
     let flat = ".a\tnumber\t1\n\n.b\tnumber\t2\n";
-    let json_str = do_unflatten(flat, Fmt::Json, "\t").unwrap();
+    let json_str = do_unflatten(flat, Fmt::Json, "\t", None).unwrap();
     let v: serde_json::Value = serde_json::from_str(&json_str).unwrap();
     assert_eq!(v["a"], 1);
     assert_eq!(v["b"], 2);
@@ -194,7 +194,7 @@ fn roundtrip_empty_containers() {
 // --- env unflatten ---
 
 fn env(json: &str) -> Vec<(String, String)> {
-    let entries = do_flatten(json, None, true).expect("flatten failed");
+    let entries = do_flatten(json, None, true, None).expect("flatten failed");
     let flat: String = entries
         .iter()
         .map(|e| format!("{}\t{}\t{}\n", fmt_path(&e.path, "\t"), e.typ, e.val))

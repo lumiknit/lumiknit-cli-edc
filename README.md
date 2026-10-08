@@ -26,7 +26,7 @@ For more details, please read help message (Run command with `-h`).
 - `md`: Streaming markdown to ANSI Terminal renderer. Better with `bat`.
 - `ww`: *Wait, what?* Stdin -> `$EDITOR` -> Stdout. Similar to vipe, but receive file extension.
 - `jex`: Filter with 'JSON structured with regex`.
-- `jflat`: Convert JSON-like (yaml, toml) data to flat path, and unflatten back!
+- `jflat`: Convert JSON-like (yaml, toml, csv, tsv) data to flat path, and unflatten back!
 
 ## Example of Combinations
 
@@ -44,6 +44,12 @@ Run LLM and edit then llm again.
 
 ```sh
 echo "Question" | llm | ww md | llm
+```
+
+Modify Clipboard
+
+```sh
+pbpaste | llm | pbcopy
 ```
 
 Filter some events from the logs
@@ -65,4 +71,10 @@ Convert data file to env
 
 ```sh
 cat value.toml | jflat | jflat -u env
+```
+
+Convert a headered CSV to JSON
+
+```sh
+cat data.csv | jflat -f csv | jflat -u json
 ```

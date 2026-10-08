@@ -2,8 +2,8 @@ jflat — multi-format structure flattener / unflattener
 
 Usage: jflat [options]
 
-Reads structured data from stdin (TOML, YAML, or JSON) and outputs a
-flat tab-separated table: one leaf value per line.
+Reads structured data from stdin (TOML, YAML, JSON, CSV, or TSV) and
+outputs a flat tab-separated table: one leaf value per line.
 
 Format (flatten):
   <path> TAB <type> TAB <value>
@@ -26,16 +26,39 @@ Format (unflatten, -u):
     null becomes an empty value (KEY=). Empty object/array entries are skipped.
     Key collisions (e.g. .foo.bar and .foo_bar both → FOO_BAR) produce duplicate lines.
 
+  csv / tsv format:
+    Rows become array elements. By default the first row supplies column
+    names on flatten, and objects are written keyed by those names on
+    unflatten (-u csv/-u tsv also emits a header row in that case). With
+    -noheader, columns become object keys "0", "1", ... (positional)
+    instead.
+    csv defaults to sep=',' with RFC 4180-style quoting allowed; tsv
+    defaults to sep='\t' with quoting disabled. Override with -svsep,
+    -svquote/-svnoquote. On unflatten, a field that needs quoting (contains
+    the separator, a quote, or a newline) is an error if quoting is
+    disabled, and nested object/array cells are always an error.
+    On unflatten, a top-level object is treated as a single row; a
+    top-level scalar (null/boolean/number/string) is written as a single
+    cell (header output is an error in that case, since there is no row to
+    name -- pass -noheader for scalar/no-name output).
+
 Options:
   -h, --help      show this help
   -v              show version
-  -f <fmt>        force input format: json, yaml, toml  (cannot use with -u)
+  -f <fmt>        force input format: json, yaml, toml, csv, tsv  (cannot use with -u)
   -nosort         keep original key order instead of sorting paths
   -sep <str>      separator between fields (default: TAB)
-  -u <fmt>        unflatten mode: output as json, yaml, toml, or env
+  -u <fmt>        unflatten mode: output as json, yaml, toml, env, csv, or tsv
+  -noheader       treat rows positionally, no header row
+                  (default: first/emitted row is column names)
+  -svsep <char>   separator character for csv/tsv (default: ',' / '\t')
+  -svquote        allow RFC 4180-style quoting for csv/tsv
+  -svnoquote      disallow quoting for csv/tsv (fields with the separator
+                  are an error on unflatten)
 
 Auto-detection order (when -f is not given): TOML first, then YAML/JSON.
 JSON is a subset of YAML and will be parsed by the YAML parser.
+CSV/TSV are never auto-detected; pass -f csv or -f tsv explicitly.
 
 Examples:
   # flatten a TOML config
@@ -56,3 +79,12 @@ Examples:
   # export config as env vars
   cat config.json | jflat | jflat -u env
   cat config.json | jflat | jflat -u env | source /dev/stdin
+
+  # flatten a headered CSV, custom semicolon separator
+  cat data.csv | jflat -f csv -svsep ';'
+
+  # convert CSV to JSON
+  cat data.csv | jflat -f csv | jflat -u json
+
+  # convert JSON array of objects to TSV
+  cat data.json | jflat | jflat -u tsv
