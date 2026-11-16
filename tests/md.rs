@@ -294,7 +294,8 @@ fn strip_ansi_writer() {
     {
         let mut w = StripAnsi::new(&mut buf);
         w.write_all(b"a\x1b[1").unwrap();
-        w.write_all(b"mb\x1b]8;;http://x\x1b\\c\x1b]8;;\x07d").unwrap();
+        w.write_all(b"mb\x1b]8;;http://x\x1b\\c\x1b]8;;\x07d")
+            .unwrap();
     }
     assert_eq!(String::from_utf8(buf).unwrap(), "abcd");
 }
@@ -306,6 +307,9 @@ fn heading_style_restored_after_inline() {
     r.render_line("# a `c` **b** d", &mut out);
     let raw = String::from_utf8(out).unwrap();
     let after_code = raw.split("c").nth(1).unwrap();
-    assert!(after_code.starts_with("\x1b[0m\x1b[1;31;4m"), "got: {raw:?}");
+    assert!(
+        after_code.starts_with("\x1b[0m\x1b[1;31;4m"),
+        "got: {raw:?}"
+    );
     assert_eq!(strip_ansi(&raw), "# a c b d\n");
 }

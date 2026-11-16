@@ -46,7 +46,8 @@ fn main() {
     let printer = code_printer.unwrap_or_else(CodePrinter::auto_detect);
 
     let mut r = Renderer::new(dry, prefix, printer);
-    let plain = plain || std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
+    let plain =
+        plain || std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
     if plain {
         run(&files, &mut r, &mut StripAnsi::new(io::stdout()));
     } else {
@@ -55,7 +56,6 @@ fn main() {
 }
 
 fn run<W: Write>(files: &[String], r: &mut Renderer, out: &mut W) {
-
     let mut first = true;
     for path in files {
         let f = std::fs::File::open(path).unwrap_or_else(|e| {

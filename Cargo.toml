@@ -1,6 +1,6 @@
 [package]
 name = "lumiknit-cli-edc"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2024"
 description = "My CLI junk/toy tools"
 readme = "README.md"
@@ -17,7 +17,6 @@ serde_yml = "0.0"
 toml = "1.1"
 libc = "0.2.186"
 which = "8.0.2"
-interprocess = "2.4.3"
 
 [[bin]]
 name = "llm"
@@ -38,6 +37,10 @@ path = "src/jex/main.rs"
 [[bin]]
 name = "jflat"
 path = "src/jflat/main.rs"
+
+[[bin]]
+name = "wtr"
+path = "src/wtr/main.rs"
 
 [profile.release]
 opt-level = "z"

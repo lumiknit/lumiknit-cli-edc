@@ -105,8 +105,11 @@ pub fn flatten_sv(
         return Ok(());
     }
 
-    let header: Option<Vec<String>> =
-        if opts.header { Some(rows.remove(0)) } else { None };
+    let header: Option<Vec<String>> = if opts.header {
+        Some(rows.remove(0))
+    } else {
+        None
+    };
 
     for (i, row) in rows.iter().enumerate() {
         path.push(Seg::Idx(i));
@@ -119,7 +122,9 @@ pub fn flatten_sv(
         } else {
             for (j, cell) in row.iter().enumerate() {
                 let key = match &header {
-                    Some(h) => h.get(j).cloned().unwrap_or_else(|| j.to_string()),
+                    Some(h) => {
+                        h.get(j).cloned().unwrap_or_else(|| j.to_string())
+                    }
                     None => j.to_string(),
                 };
                 path.push(Seg::Key(key));
@@ -154,8 +159,10 @@ fn cell_to_string(v: &serde_json::Value) -> Result<String, String> {
 }
 
 fn encode_field(s: &str, opts: &SvOpts) -> Result<String, String> {
-    let needs_quote =
-        s.contains(opts.sep) || s.contains('"') || s.contains('\n') || s.contains('\r');
+    let needs_quote = s.contains(opts.sep)
+        || s.contains('"')
+        || s.contains('\n')
+        || s.contains('\r');
     if !needs_quote {
         return Ok(s.to_string());
     }
@@ -363,10 +370,7 @@ mod tests {
             serde_json::from_str(r#"{"name":"al","age":30}"#).unwrap();
         let mut opts = SvOpts::csv();
         opts.header = true;
-        assert_eq!(
-            unflatten_sv(&json, &opts).unwrap(),
-            "age,name\n30,al\n"
-        );
+        assert_eq!(unflatten_sv(&json, &opts).unwrap(), "age,name\n30,al\n");
     }
 
     #[test]

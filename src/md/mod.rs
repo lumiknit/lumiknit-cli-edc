@@ -399,8 +399,10 @@ pub fn render_inline_base(
                     .map_or(chars.len(), |p| i + p);
                 while end > i {
                     let l = chars[end - 1];
-                    let open = chars[i..end].iter().filter(|&&c| c == '(').count();
-                    let close = chars[i..end].iter().filter(|&&c| c == ')').count();
+                    let open =
+                        chars[i..end].iter().filter(|&&c| c == '(').count();
+                    let close =
+                        chars[i..end].iter().filter(|&&c| c == ')').count();
                     if ".,;:!?'\"".contains(l) || (l == ')' && close > open) {
                         end -= 1;
                     } else {
@@ -731,8 +733,7 @@ impl Renderer {
             return;
         }
 
-        if let Some((indent, fence_char, fence_len, info)) = parse_fence(line)
-        {
+        if let Some((indent, fence_char, fence_len, info)) = parse_fence(line) {
             self.begin_block(BlockKind::Code, out);
             let fence = fence_char.to_string().repeat(fence_len);
             let lang = info.split_whitespace().next().unwrap_or("").to_string();
@@ -825,7 +826,8 @@ impl Renderer {
 
         if let Some((indent, mlen, num)) = parse_list(line) {
             // only "1." may interrupt a paragraph
-            let in_para = self.needs_newline && self.last_kind == BlockKind::Para;
+            let in_para =
+                self.needs_newline && self.last_kind == BlockKind::Para;
             if !(in_para && num.is_some_and(|n| n != 1)) {
                 self.begin_block(BlockKind::List, out);
                 let marker = &line[indent..indent + mlen];

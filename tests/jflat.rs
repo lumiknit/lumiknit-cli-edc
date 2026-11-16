@@ -105,7 +105,8 @@ fn flat_key_with_special_chars() {
 #[test]
 fn flat_sorted_keys() {
     // do_flatten with sort=true must output paths in lexicographic order
-    let entries = do_flatten(r#"{"z":1,"a":2,"m":3}"#, None, true, None).unwrap();
+    let entries =
+        do_flatten(r#"{"z":1,"a":2,"m":3}"#, None, true, None).unwrap();
     let keys: Vec<_> =
         entries.iter().map(|e| fmt_path(&e.path, "\t")).collect();
     let mut sorted = keys.clone();

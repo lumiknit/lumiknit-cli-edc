@@ -1,0 +1,23 @@
+Usage: wtr <BRANCH_NAME> [--base <BASE_BRANCH>] [-y]
+       wtr --clear [-y]
+       wtr --main
+
+Create a git worktree beside the main worktree. The resulting path is written
+to stdout; commands, prompts, and status messages are written to stderr.
+ASCII punctuation separates repository name initials; UTF-8 initials are kept.
+The folder name is -<repo initials>--<last branch path component>.
+An existing local branch is attached. Otherwise, a matching remote branch is
+fetched and used to create a tracking branch. --base explicitly selects a
+base for a new branch instead of using a matching remote branch.
+
+-y skips the confirmation prompt. Without -y, stdin must be a TTY.
+--main prints the main worktree path.
+--clear lists and removes all other worktrees without force. It can only run
+from the main worktree, asks for confirmation, then prunes stale worktree data.
+
+Examples:
+  wtr feat/lumi/abcd-def
+  wtr feat/new-feature --base main
+  cd "$(wtr feat/ci-job -y)"
+  wtr --main
+  wtr --clear
