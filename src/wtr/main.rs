@@ -8,6 +8,7 @@ struct CreateArgs {
     branch: String,
     base: Option<String>,
     yes: bool,
+    no_copy: bool,
 }
 
 enum Args {
@@ -22,6 +23,7 @@ fn parse_args() -> Result<Option<Args>, String> {
     let mut clear = false;
     let mut main = false;
     let mut yes = false;
+    let mut no_copy = false;
     let mut iter = std::env::args().skip(1);
 
     while let Some(arg) = iter.next() {
@@ -40,6 +42,7 @@ fn parse_args() -> Result<Option<Args>, String> {
             }
             "--main" => main = true,
             "-y" => yes = true,
+            "--no-copy" => no_copy = true,
             "--base" => {
                 if base.is_some() {
                     return Err("--base can only be specified once".to_string());
@@ -78,7 +81,7 @@ fn parse_args() -> Result<Option<Args>, String> {
     }
 
     if main {
-        if clear || branch.is_some() || base.is_some() || yes {
+        if clear || branch.is_some() || base.is_some() || yes || no_copy {
             return Err(
                 "--main cannot be combined with other options".to_string()
             );
@@ -87,9 +90,11 @@ fn parse_args() -> Result<Option<Args>, String> {
     }
 
     if clear {
-        if branch.is_some() || base.is_some() {
-            return Err("--clear cannot be combined with a branch or --base"
-                .to_string());
+        if branch.is_some() || base.is_some() || no_copy {
+            return Err(
+                "--clear cannot be combined with a branch, --base, or --no-copy"
+                    .to_string(),
+            );
         }
         return Ok(Some(Args::Clear { yes }));
     }
@@ -104,7 +109,12 @@ fn parse_args() -> Result<Option<Args>, String> {
         return Err("a base branch name cannot be empty".to_string());
     }
 
-    Ok(Some(Args::Create(CreateArgs { branch, base, yes })))
+    Ok(Some(Args::Create(CreateArgs {
+        branch,
+        base,
+        yes,
+        no_copy,
+    })))
 }
 
 fn git_output(root: Option<&Path>, args: &[&str]) -> Result<Output, String> {
@@ -323,6 +333,22 @@ fn run_git(command: &mut Command) -> Result<(), String> {
     }
 }
 
+fn print_worktree_path(path: &Path, copy_to_clipboard: bool) {
+    let path = path.to_string_lossy().into_owned();
+    println!("{path}");
+
+    if copy_to_clipboard && io::stdout().is_terminal() {
+        match arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(path.clone()))
+        {
+            Ok(()) => eprintln!("copied worktree path to clipboard"),
+            Err(error) => {
+                eprintln!("could not copy worktree path to clipboard: {error}");
+            }
+        }
+    }
+}
+
 fn run_create(args: CreateArgs) -> Result<(), String> {
     let root = find_root()?;
     let all_worktrees = worktrees(&root)?;
@@ -337,7 +363,7 @@ fn run_create(args: CreateArgs) -> Result<(), String> {
                     && path.is_dir()
             });
             if is_branch_worktree {
-                println!("{}", path.display());
+                print_worktree_path(&path, !args.no_copy);
                 return Ok(());
             }
             return Err(format!(
@@ -460,7 +486,7 @@ fn run_create(args: CreateArgs) -> Result<(), String> {
         }
     }
     run_git(&mut git)?;
-    println!("{}", path.display());
+    print_worktree_path(&path, !args.no_copy);
     Ok(())
 }
 
