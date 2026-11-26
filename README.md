@@ -28,6 +28,8 @@ For more details, please read help message (Run command with `-h`).
 - `jex`: Filter with 'JSON structured with regex`.
 - `jflat`: Convert JSON-like (yaml, toml, csv, tsv) data to flat path, and unflatten back!
 - `wtr`: Create and clear git worktrees beside the main worktree.
+- `lsel`: Select, match, or rewrite stdin lines with a bounded stdout. See `lsel --help`.
+- `html-skim`: Filter stdin HTML into Markdown or cleaned HTML for LLM pipelines.
 
 ## Example of Combinations
 
@@ -79,3 +81,27 @@ Convert a headered CSV to JSON
 ```sh
 cat data.csv | jflat -f csv | jflat -u json
 ```
+
+### html-skim
+
+Filter stdin HTML with html5ever, emitting Markdown by default. No file access,
+subprocesses, script execution or network requests.
+
+```sh
+curl -sL https://example.org | html-skim --main --limit 16000
+html-skim --html < page.html
+html-skim --include styles < page.html
+html-skim --only scripts --limit 8000 < page.html
+```
+
+By default it removes scripts, styles, inline SVG, embeds, hidden content,
+event handlers and presentation/JS attributes. Useful head metadata becomes
+YAML frontmatter (`--no-metadata` to omit). `--main` prefers a main element,
+then an article or common content container, falling back to the body.
+`--no-links` keeps Markdown link text without URLs. `--include` and `--only`
+accept `scripts`, `styles`, or `assets` (both); external assets stay references.
+
+`--limit BYTES` caps the entire output at a UTF-8 boundary, potentially cutting
+Markdown/HTML/YAML syntax. It does not bound input memory: parsing builds a DOM.
+HTML output is for document extraction, not browser sanitization; explicitly
+retained scripts/styles remain active when opened in a browser.

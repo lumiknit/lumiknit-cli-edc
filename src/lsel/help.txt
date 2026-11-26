@@ -1,0 +1,34 @@
+Filter stdin to stdout.
+Usage: lsel [-f N] [-t N] [-m RE] [-I] [-v] [-C N] [-r TEXT [-o]] [-n|-N] [-S] [-U] [-L BYTES] [--no-stats] [-h]
+Inclusive 1-based range (-1 last) → Rust regex filter/context or replace ($1; -o emits only replacements) → sort → adjacent uniq → cap (4096 B); stats on stderr.
+
+  -f, --from <line>          First input line to select
+  -t, --to <line>            Last input line to select
+  -m, --match <regex>        Select matching lines
+  -I, --ignore-case          Match without case distinctions
+  -v, --invert-match         Select nonmatching lines
+  -C, --context <lines>      Include this many lines on each side within the range
+  -r, --replace <text>       Replace every match and keep all lines in the range
+  -o, --only-matching        With -r, print only expanded replacements, one per match
+  -n, --line-number         Always prefix original input line numbers
+  -N, --no-line-number      Never prefix line numbers (default for piped output)
+  -S, --sort                 Sort lines lexically
+  -U, --uniq                 Drop adjacent duplicate lines
+  -L, --limit <bytes>        Cap stdout at a UTF-8 boundary (default 4096)
+      --no-stats             Suppress the stderr summary
+  -h, --help                 Show help
+
+Order: range, match/context or replace, sort, uniq, limit.
+Ranges are inclusive and 1-based. Negative indices count from EOF (-1 is last).
+-I, -v, -C and -r require -m. -v cannot be combined with -r.
+Patterns and replacements follow Rust regex / rg syntax ($1, ${1}suffix,
+${name}, $$). Invalid UTF-8 input is replaced with U+FFFD.
+Negative indices and sorting buffer in memory. Input comes only from stdin.
+Terminal stdin shows brief usage. Terminal stdout enables line numbers.
+With context, separated groups use -- unless sorting is enabled.
+Line number prefixes and group separators count toward the output cap.
+The stderr summary counts read, scanned and regex-matching lines and reports
+whether EOF was observed and whether the output limit truncated the result.
+EOF=false means the read count may represent only a prefix of stdin.
+Truncated is unknown when streaming stops exactly at the cap without
+checking for more output.

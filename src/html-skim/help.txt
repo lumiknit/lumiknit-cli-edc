@@ -1,0 +1,34 @@
+html-skim — stdin HTML -> compact Markdown (default) or cleaned HTML
+
+Usage: html-skim [OPTIONS] < page.html
+
+  --html                  Emit cleaned HTML instead of Markdown
+  --main                  First main/role=main, article, common content ID/class;
+                          fall back to body. No readability scoring.
+  --include KIND          Keep scripts, styles, or assets (both); repeatable
+  --only KIND             Extract only scripts, styles, or assets; repeatable
+                          Cannot combine with --main
+  --no-metadata           Omit title/description/author/OG/canonical metadata
+  --no-links              Markdown: keep link text without destinations
+  --limit BYTES           Hard UTF-8 byte cap, including YAML; 0 emits nothing
+  -h, --help              Show help
+  -v, --version           Show version
+
+Default: remove scripts, styles, SVG, embeds, templates, comments, hidden
+content, event handlers, presentation/JS attributes and non-document metadata.
+Markdown includes document metadata as YAML frontmatter. Lists, headings,
+links, quotes and code are retained; tables become rows separated by pipes.
+Images become alt text. Relative URLs stay relative; no URL is fetched.
+--include/--only retain source code and external asset references, never load
+or execute them. HTML with retained scripts/styles is active if opened.
+Cleaned HTML is for document extraction, not a browser security sanitizer.
+
+Reads stdin only; no file reads/writes, subprocesses or network requests.
+HTML5 parsing buffers the input and DOM; --limit caps output, not input RAM.
+Invalid UTF-8 is replaced. A cap can cut Markdown/HTML/YAML syntax midway;
+it never cuts a UTF-8 character. Broken pipes exit successfully.
+
+Examples:
+  curl -sL https://example.org | html-skim --main --limit 16000
+  html-skim --html < page.html
+  html-skim --only scripts --limit 8000 < page.html

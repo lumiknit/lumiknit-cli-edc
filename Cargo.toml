@@ -1,10 +1,9 @@
 [package]
 name = "lumiknit-cli-edc"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 description = "My CLI junk/toy tools"
 readme = "README.md"
-homepage = "https://github.com/lumiknit/lumiknit-cli-edc"
 repository = "https://github.com/lumiknit/lumiknit-cli-edc"
 license = "MIT"
 categories = ["command-line-utilities"]
@@ -18,6 +17,12 @@ serde_yml = "0.0"
 toml = "1.1"
 libc = "0.2.186"
 which = "8.0.2"
+html5ever = "0.40"
+markup5ever_rcdom = "0.40"
+
+[[bin]]
+name = "html-skim"
+path = "src/html-skim/main.rs"
 
 [[bin]]
 name = "llm"
@@ -42,6 +47,10 @@ path = "src/jflat/main.rs"
 [[bin]]
 name = "wtr"
 path = "src/wtr/main.rs"
+
+[[bin]]
+name = "lsel"
+path = "src/lsel/main.rs"
 
 [profile.release]
 opt-level = "z"
