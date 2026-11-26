@@ -1,6 +1,7 @@
 Filter stdin to stdout.
 Usage: lsel [-l LIST] [-m PATTERN] [-F] [-I] [-v] [-C N] [-r TEXT] [-o] [-n|-N] [-S] [-U] [-M N] [-X] [-L BYTES] [--no-stats] [-h]
 Select lines with inclusive ranges, e.g. -l 1-5,12,20- (through EOF). Negative numbers count from EOF: -1 is the last line, 1--2 excludes it.
+-m regex, -r replace ($1 captures, '' deletes), -v omit matching lines, -o matches/replacements only, -M cap matches/edits. -F literal, -I ignore case, -C context, -X multiline, -n/-N line numbers on/off, -S sort, -U dedup adjacent, -L byte cap, --no-stats hide stats.
 
   -l, --lines <list>         Select comma-separated line numbers and ranges (default: all lines)
   -m, --match <pattern>      Select matching lines
