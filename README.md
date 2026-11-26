@@ -28,7 +28,7 @@ For more details, please read help message (Run command with `-h`).
 - `jex`: Filter with 'JSON structured with regex`.
 - `jflat`: Convert JSON-like (yaml, toml, csv, tsv) data to flat path, and unflatten back!
 - `wtr`: Create and clear git worktrees beside the main worktree.
-- `lsel`: Select, match, or rewrite stdin lines with a bounded stdout. See `lsel --help`.
+- `lsel`: Stdin only (e.g. `lsel <FILE`). Range → match/context or replace → sort → uniq → byte cap.
 - `html-skim`: Filter stdin HTML into Markdown or cleaned HTML for LLM pipelines.
 
 ## Example of Combinations

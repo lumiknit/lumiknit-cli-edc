@@ -1,27 +1,28 @@
-Filter stdin to stdout.
+Stdin only (e.g. lsel <FILE).
+Order: range → match/context or replace → sort → uniq → byte cap.
 Usage: lsel [-l LIST] [-m PATTERN] [-F] [-I] [-v] [-C N] [-r TEXT] [-o] [-n|-N] [-S] [-U] [-M N] [-X] [-L BYTES] [--no-stats] [-h]
-Select lines with inclusive ranges, e.g. -l 1-5,12,20- (through EOF). Negative numbers count from EOF: -1 is the last line, 1--2 excludes it.
--m regex, -r replace ($1 captures, '' deletes), -v omit matching lines, -o matches/replacements only, -M cap matches/edits. -F literal, -I ignore case, -C context, -X multiline, -n/-N line numbers on/off, -S sort, -U dedup adjacent, -L byte cap, --no-stats hide stats.
+-l cut-style ranges (1-5,12,20-); from end: -9--5, -5-.
+-m regex, -F literal, -I ignore case, -v invert, -C context, -r replace ($1 capture, '' delete), -o matches/replacements only, -M cap matches/edits, -X multiline.
+-n/-N line numbers on/off, -S sort, -U drop adjacent duplicates, -L byte cap, --no-stats hide stderr summary.
 
-  -l, --lines <list>         Select comma-separated line numbers and ranges (default: all lines)
+  -l, --lines <list>         Select line ranges (e.g. 1-5,12,20-)
   -m, --match <pattern>      Select matching lines
   -F, --fixed-strings        Treat the pattern and replacement as literal text
-  -I, --ignore-case          Match without case distinctions
+  -I, --ignore-case          Ignore case
   -v, --invert-match         Select nonmatching lines
-  -C, --context <lines>      Include this many adjacent selected lines on each side
-  -r, --replace <text>       Replace matches and keep all selected lines
-  -o, --only-matching        Print each match or its replacement as a separate record
-  -n, --line-number         Always prefix original input line numbers
-  -N, --no-line-number      Never prefix line numbers (default for piped output)
+  -C, --context <lines>      Include N lines of context
+  -r, --replace <text>       Replace matches, keep other text
+  -o, --only-matching        Emit each match or replacement separately
+  -n, --line-number         Prefix original line numbers
+  -N, --no-line-number      Omit line numbers
   -S, --sort                 Sort lines lexically
   -U, --uniq                 Drop adjacent duplicate lines
-  -M, --max-count <count>   Select the first N matching records or replace the first N occurrences
-  -X, --multiline           Match all selected lines as one record, including line endings
-  -L, --limit <bytes>       Cap stdout at a UTF-8 boundary when specified
+  -M, --max-count <count>   Cap matches or edits at N
+  -X, --multiline           Match selected lines as one block
+  -L, --limit <bytes>       Cap stdout bytes at a UTF-8 boundary
       --no-stats             Suppress the stderr summary
   -h, --help                 Show help
 
-Order: range, match/context or replace, sort, uniq, limit.
 Ranges are inclusive and 1-based. Negative indices count from EOF (-1 is last).
 Range starts are required. A single number selects one line. Overlapping
 ranges select each line once, in input order. Reversed ranges select no lines.
@@ -38,7 +39,7 @@ In regex mode, (?s) lets dot match newlines and (?m) lets ^ and $ match
 individual line boundaries.
 Patterns and replacements follow Rust regex / rg syntax ($1, ${1}suffix,
 ${name}, $$). Invalid UTF-8 input is replaced with U+FFFD.
-Negative indices and sorting buffer in memory. Input comes only from stdin.
+Negative indices and sorting buffer in memory.
 Terminal stdin shows brief usage. Terminal stdout enables line numbers.
 With context, separated groups use -- unless sorting is enabled.
 Line number prefixes and group separators count toward the output cap.
