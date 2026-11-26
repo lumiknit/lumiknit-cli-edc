@@ -1,36 +1,40 @@
-use regex::{Regex, RegexBuilder};
+use regex::{NoExpand, Regex, RegexBuilder};
 use std::collections::VecDeque;
 use std::io::{self, BufRead, IsTerminal, Write};
 
 const HELP: &str = include_str!("help.txt");
 
 struct Options {
-    from: i64,
-    to: Option<i64>,
+    ranges: Vec<LineRange>,
     pattern: Option<Regex>,
     replacement: Option<String>,
+    fixed: bool,
     invert: bool,
     only: bool,
     context: usize,
     sort: bool,
     uniq: bool,
-    limit: usize,
+    limit: Option<usize>,
+    max_matches: Option<usize>,
+    multiline: bool,
     stats: bool,
     line_numbers: bool,
 }
 
 fn parse() -> Result<Option<Options>, String> {
     let mut options = Options {
-        from: 1,
-        to: None,
+        ranges: vec![LineRange { from: 1, to: None }],
         pattern: None,
         replacement: None,
+        fixed: false,
         invert: false,
         only: false,
         context: 0,
         sort: false,
         uniq: false,
-        limit: 4096,
+        limit: None,
+        max_matches: None,
+        multiline: false,
         stats: true,
         line_numbers: io::stdout().is_terminal(),
     };
@@ -47,11 +51,11 @@ fn parse() -> Result<Option<Options>, String> {
         };
         match arg {
             "-h" | "--help" => return Ok(None),
-            "-f" | "--from" => options.from = line_number(&value()?)?,
-            "-t" | "--to" => options.to = Some(line_number(&value()?)?),
+            "-l" | "--lines" => options.ranges = line_ranges(&value()?)?,
             "-m" | "--match" => pattern = Some(value()?),
             "-r" | "--replace" => options.replacement = Some(value()?),
             "-I" | "--ignore-case" => ignore_case = true,
+            "-F" | "--fixed-strings" => options.fixed = true,
             "-v" | "--invert-match" => options.invert = true,
             "-o" | "--only-matching" => options.only = true,
             "-C" | "--context" => {
@@ -60,7 +64,11 @@ fn parse() -> Result<Option<Options>, String> {
             }
             "-S" | "--sort" => options.sort = true,
             "-U" | "--uniq" => options.uniq = true,
-            "-L" | "--limit" => options.limit = count(&value()?)?,
+            "-L" | "--limit" => options.limit = Some(count(&value()?)?),
+            "-M" | "--max-count" => {
+                options.max_matches = Some(count(&value()?)?)
+            }
+            "-X" | "--multiline" => options.multiline = true,
             "-n" | "--line-number" => options.line_numbers = true,
             "-N" | "--no-line-number" => options.line_numbers = false,
             "--no-stats" => options.stats = false,
@@ -69,19 +77,31 @@ fn parse() -> Result<Option<Options>, String> {
     }
     if pattern.is_none()
         && (ignore_case
+            || options.fixed
+            || options.only
             || options.invert
             || has_context
+            || options.max_matches.is_some()
+            || options.multiline
             || options.replacement.is_some())
     {
-        return Err("-I, -v, -C and -r require -m".into());
+        return Err("-I, -F, -v, -C, -r, -o, -M and -X require -m".into());
     }
-    if options.only && options.replacement.is_none() {
-        return Err("-o requires -r".into());
+    if options.only && (options.invert || has_context) {
+        return Err("-o cannot be combined with -v or -C".into());
     }
     if options.replacement.is_some() && (options.invert || has_context) {
         return Err("-r cannot be combined with -v or -C".into());
     }
+    if options.multiline && has_context {
+        return Err("-X cannot be combined with -C".into());
+    }
     if let Some(pattern) = pattern {
+        let pattern = if options.fixed {
+            regex::escape(&pattern)
+        } else {
+            pattern
+        };
         options.pattern = Some(
             RegexBuilder::new(&pattern)
                 .case_insensitive(ignore_case)
@@ -90,6 +110,35 @@ fn parse() -> Result<Option<Options>, String> {
         );
     }
     Ok(Some(options))
+}
+
+struct LineRange {
+    from: i64,
+    to: Option<i64>,
+}
+
+fn line_ranges(value: &str) -> Result<Vec<LineRange>, String> {
+    value
+        .split(',')
+        .map(|range| {
+            let sign_length = usize::from(range.starts_with('-'));
+            let (from, to) = match range[sign_length..].find('-') {
+                Some(separator) => {
+                    let (from, end) = range.split_at(sign_length + separator);
+                    let to = match &end[1..] {
+                        "" => None,
+                        end => Some(line_number(end)?),
+                    };
+                    (line_number(from)?, to)
+                }
+                None => {
+                    let number = line_number(range)?;
+                    (number, Some(number))
+                }
+            };
+            Ok(LineRange { from, to })
+        })
+        .collect()
 }
 
 fn line_number(value: &str) -> Result<i64, String> {
@@ -117,7 +166,7 @@ struct Output<W> {
     sorted: Option<Vec<Line>>,
     previous: Option<String>,
     uniq: bool,
-    remaining: usize,
+    remaining: Option<usize>,
     clipped: bool,
     line_numbers: bool,
     group_context: bool,
@@ -155,12 +204,16 @@ impl<W: Write> Output<W> {
     }
 
     fn write(&mut self, record: &str) -> io::Result<bool> {
-        let mut end = self.remaining.min(record.len());
+        let Some(remaining) = &mut self.remaining else {
+            self.writer.write_all(record.as_bytes())?;
+            return Ok(true);
+        };
+        let mut end = (*remaining).min(record.len());
         while !record.is_char_boundary(end) {
             end -= 1;
         }
         self.writer.write_all(&record.as_bytes()[..end])?;
-        self.remaining -= end;
+        *remaining -= end;
         self.clipped = end < record.len();
         Ok(!self.clipped)
     }
@@ -205,10 +258,33 @@ struct Filter<'a> {
     options: &'a Options,
     before: VecDeque<Line>,
     after: usize,
+    matches_left: usize,
+    block: String,
+    block_start: usize,
     stats: Stats,
 }
 
 impl Filter<'_> {
+    fn selection_complete(&self) -> bool {
+        self.matches_left == 0
+            && self.after == 0
+            && (self.options.replacement.is_none() || self.options.only)
+    }
+    fn accept(
+        &mut self,
+        record: String,
+        number: usize,
+        output: &mut Output<impl Write>,
+    ) -> io::Result<bool> {
+        if self.options.multiline {
+            if self.block_start == 0 {
+                self.block_start = number;
+            }
+            self.block.push_str(&record);
+            return Ok(true);
+        }
+        self.line(record, number, output)
+    }
     fn line(
         &mut self,
         record: String,
@@ -221,40 +297,74 @@ impl Filter<'_> {
             number,
             context: false,
         };
-        self.stats.scanned += 1;
+        let line_count = if options.multiline {
+            line.text.split_inclusive('\n').count()
+        } else {
+            1
+        };
+        self.stats.scanned += line_count;
         let Some(pattern) = &options.pattern else {
             return output.emit(line);
         };
-        let (content, ending) = split_line(&line.text);
+        let (content, ending) = if options.multiline {
+            (line.text.as_str(), "")
+        } else {
+            split_line(&line.text)
+        };
         let matched = pattern.is_match(content);
-        self.stats.matched += usize::from(matched);
-        if let Some(replacement) = &options.replacement {
-            if options.only {
-                for captures in pattern.captures_iter(content) {
-                    let mut expanded = String::new();
-                    captures.expand(replacement, &mut expanded);
-                    expanded.push('\n');
-                    if !output.emit(Line {
-                        text: expanded,
-                        number,
-                        context: false,
-                    })? {
-                        return Ok(false);
+        self.stats.matched += usize::from(matched) * line_count;
+        if options.only {
+            for captures in
+                pattern.captures_iter(content).take(self.matches_left)
+            {
+                self.matches_left -= 1;
+                let mut expanded = String::new();
+                match &options.replacement {
+                    Some(replacement) if options.fixed => {
+                        expanded.push_str(replacement);
                     }
+                    Some(replacement) => {
+                        captures.expand(replacement, &mut expanded);
+                    }
+                    None => expanded.push_str(&captures[0]),
                 }
-                return Ok(true);
+                expanded.push('\n');
+                if !output.emit(Line {
+                    text: expanded,
+                    number,
+                    context: false,
+                })? {
+                    return Ok(false);
+                }
             }
-            if matched {
-                let mut rewritten = pattern
-                    .replace_all(content, replacement.as_str())
-                    .into_owned();
+            return Ok(true);
+        }
+        if let Some(replacement) = &options.replacement {
+            if matched && self.matches_left > 0 {
+                let limit = if options.max_matches.is_some() {
+                    let count = pattern
+                        .find_iter(content)
+                        .take(self.matches_left)
+                        .count();
+                    self.matches_left -= count;
+                    count
+                } else {
+                    0
+                };
+                let mut rewritten = if options.fixed {
+                    pattern.replacen(content, limit, NoExpand(replacement))
+                } else {
+                    pattern.replacen(content, limit, replacement.as_str())
+                }
+                .into_owned();
                 rewritten.push_str(ending);
                 line.text = rewritten;
                 return output.emit(line);
             }
             return output.emit(line);
         }
-        if matched != options.invert {
+        if matched != options.invert && self.matches_left > 0 {
+            self.matches_left -= 1;
             self.after = options.context;
             while let Some(previous) = self.before.pop_front() {
                 if !output.emit(previous)? {
@@ -306,48 +416,71 @@ fn select(
     filter: &mut Filter<'_>,
     output: &mut Output<impl Write>,
 ) -> io::Result<bool> {
-    if options.limit == 0 {
+    if options.limit == Some(0) {
         return Ok(false);
     }
+    if filter.selection_complete() {
+        return Ok(true);
+    }
     let mut bytes = Vec::new();
-    if options.from < 0 || options.to.is_some_and(|to| to < 0) {
+    let mut buffered = if options
+        .ranges
+        .iter()
+        .any(|range| range.from < 0 || range.to.is_some_and(|to| to < 0))
+    {
         let mut records = Vec::new();
         while read_line(&mut input, &mut bytes, &mut filter.stats)? {
             records.push(String::from_utf8_lossy(&bytes).into_owned());
         }
-        let total = records.len() as i128;
-        let from = resolve(options.from, total).clamp(1, total + 1);
-        let to = options
-            .to
-            .map_or(total, |to| resolve(to, total))
-            .clamp(0, total);
-        let count = (to - from + 1).max(0) as usize;
-        for (index, record) in records
-            .into_iter()
-            .enumerate()
-            .skip((from - 1) as usize)
-            .take(count)
-        {
-            if !filter.line(record, index + 1, output)? || output.remaining == 0
-            {
-                return Ok(false);
-            }
+        Some(records.into_iter())
+    } else {
+        None
+    };
+    let total = buffered
+        .as_ref()
+        .map_or(i128::MAX, |records| records.len() as i128);
+    let mut ranges: Vec<_> = options
+        .ranges
+        .iter()
+        .filter_map(|range| {
+            let from = resolve(range.from, total).max(1);
+            let to = range.to.map_or(total, |to| resolve(to, total).min(total));
+            (from <= to).then_some((from, to))
+        })
+        .collect();
+    ranges.sort_unstable();
+    let mut ranges = ranges.into_iter().peekable();
+    let mut previous = 0;
+    for number in 1.. {
+        let line = number as i128;
+        while ranges.peek().is_some_and(|&(_, to)| to < line) {
+            ranges.next();
         }
-        return Ok(true);
-    }
-    let to = options.to.map_or(i128::MAX, i128::from);
-    if i128::from(options.from) > to {
-        return Ok(true);
-    }
-    while (filter.stats.read as i128) < to
-        && read_line(&mut input, &mut bytes, &mut filter.stats)?
-    {
-        if (filter.stats.read as i128) >= i128::from(options.from)
-            && (!filter.line(
-                String::from_utf8_lossy(&bytes).into_owned(),
-                filter.stats.read,
-                output,
-            )? || output.remaining == 0)
+        let Some(&(from, _)) = ranges.peek() else {
+            break;
+        };
+        if previous + 1 < number {
+            filter.before.clear();
+            filter.after = 0;
+        }
+        if filter.selection_complete() {
+            break;
+        }
+        let record = match &mut buffered {
+            Some(records) => records.next(),
+            None if read_line(&mut input, &mut bytes, &mut filter.stats)? => {
+                (line >= from)
+                    .then(|| String::from_utf8_lossy(&bytes).into_owned())
+            }
+            None => break,
+        };
+        if line < from {
+            continue;
+        }
+        previous = number;
+        let record = record.expect("selected line is within buffered input");
+        if !filter.accept(record, number, output)?
+            || output.remaining == Some(0)
         {
             return Ok(false);
         }
@@ -360,6 +493,9 @@ fn run(options: Options) -> io::Result<()> {
         options: &options,
         before: VecDeque::new(),
         after: 0,
+        matches_left: options.max_matches.unwrap_or(usize::MAX),
+        block: String::new(),
+        block_start: 0,
         stats: Stats::default(),
     };
     let mut output = Output {
@@ -374,9 +510,13 @@ fn run(options: Options) -> io::Result<()> {
         last_number: None,
         pending_gap: false,
     };
-    let complete =
-        select(&options, io::stdin().lock(), &mut filter, &mut output)?
-            && output.finish()?;
+    let mut complete =
+        select(&options, io::stdin().lock(), &mut filter, &mut output)?;
+    if complete && filter.block_start != 0 {
+        let block = std::mem::take(&mut filter.block);
+        complete = filter.line(block, filter.block_start, &mut output)?;
+    }
+    let complete = complete && output.finish()?;
     output.writer.flush()?;
     if options.stats {
         let Stats {

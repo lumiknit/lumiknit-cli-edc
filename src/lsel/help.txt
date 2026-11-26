@@ -1,26 +1,40 @@
 Filter stdin to stdout.
-Usage: lsel [-f N] [-t N] [-m RE] [-I] [-v] [-C N] [-r TEXT [-o]] [-n|-N] [-S] [-U] [-L BYTES] [--no-stats] [-h]
-Inclusive 1-based range (-1 last) → Rust regex filter/context or replace ($1; -o emits only replacements) → sort → adjacent uniq → cap (4096 B); stats on stderr.
+Usage: lsel [-l LIST] [-m PATTERN] [-F] [-I] [-v] [-C N] [-r TEXT] [-o] [-n|-N] [-S] [-U] [-M N] [-X] [-L BYTES] [--no-stats] [-h]
+Select lines with inclusive ranges, e.g. -l 1-5,12,20- (through EOF). Negative numbers count from EOF: -1 is the last line, 1--2 excludes it.
 
-  -f, --from <line>          First input line to select
-  -t, --to <line>            Last input line to select
-  -m, --match <regex>        Select matching lines
+  -l, --lines <list>         Select comma-separated line numbers and ranges (default: all lines)
+  -m, --match <pattern>      Select matching lines
+  -F, --fixed-strings        Treat the pattern and replacement as literal text
   -I, --ignore-case          Match without case distinctions
   -v, --invert-match         Select nonmatching lines
-  -C, --context <lines>      Include this many lines on each side within the range
-  -r, --replace <text>       Replace every match and keep all lines in the range
-  -o, --only-matching        With -r, print only expanded replacements, one per match
+  -C, --context <lines>      Include this many adjacent selected lines on each side
+  -r, --replace <text>       Replace matches and keep all selected lines
+  -o, --only-matching        Print each match or its replacement as a separate record
   -n, --line-number         Always prefix original input line numbers
   -N, --no-line-number      Never prefix line numbers (default for piped output)
   -S, --sort                 Sort lines lexically
   -U, --uniq                 Drop adjacent duplicate lines
-  -L, --limit <bytes>        Cap stdout at a UTF-8 boundary (default 4096)
+  -M, --max-count <count>   Select the first N matching records or replace the first N occurrences
+  -X, --multiline           Match all selected lines as one record, including line endings
+  -L, --limit <bytes>       Cap stdout at a UTF-8 boundary when specified
       --no-stats             Suppress the stderr summary
   -h, --help                 Show help
 
 Order: range, match/context or replace, sort, uniq, limit.
 Ranges are inclusive and 1-based. Negative indices count from EOF (-1 is last).
--I, -v, -C and -r require -m. -v cannot be combined with -r.
+Range starts are required. A single number selects one line. Overlapping
+ranges select each line once, in input order. Reversed ranges select no lines.
+-I, -F, -v, -C, -r, -o, -M and -X require -m.
+-r and -o cannot be combined with -v or -C.
+-M counts across selected lines before sorting or deduplication.
+With -v it counts selected nonmatching records. With -r or -o it counts
+individual matches. Zero selects no records or changes no text.
+-X buffers the selected lines, concatenating them across gaps. It cannot be
+combined with -C and uses the first selected line number for output. A
+matching block counts all its lines in the stats.
+Use a literal newline or a regex newline escape to match across lines.
+In regex mode, (?s) lets dot match newlines and (?m) lets ^ and $ match
+individual line boundaries.
 Patterns and replacements follow Rust regex / rg syntax ($1, ${1}suffix,
 ${name}, $$). Invalid UTF-8 input is replaced with U+FFFD.
 Negative indices and sorting buffer in memory. Input comes only from stdin.
