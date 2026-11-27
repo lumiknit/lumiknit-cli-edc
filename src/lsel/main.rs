@@ -17,13 +17,21 @@ struct Options {
     limit: Option<usize>,
     max_matches: Option<usize>,
     multiline: bool,
+    passthru: bool,
     stats: bool,
     line_numbers: bool,
 }
 
+#[derive(Clone, Copy)]
+enum Case {
+    Sensitive,
+    Insensitive,
+    Smart,
+}
+
 fn parse() -> Result<Option<Options>, String> {
     let mut options = Options {
-        ranges: vec![LineRange { from: 1, to: None }],
+        ranges: Vec::new(),
         pattern: None,
         replacement: None,
         fixed: false,
@@ -35,26 +43,32 @@ fn parse() -> Result<Option<Options>, String> {
         limit: None,
         max_matches: None,
         multiline: false,
+        passthru: false,
         stats: true,
         line_numbers: io::stdout().is_terminal(),
     };
-    let mut args = std::env::args_os().skip(1);
-    let mut pattern = None;
-    let mut ignore_case = false;
+    let mut args = split_args(std::env::args_os().skip(1))?.into_iter();
+    let mut patterns: Vec<String> = Vec::new();
+    let mut positional: Vec<String> = Vec::new();
+    let mut case = Case::Sensitive;
     let mut has_context = false;
+    let mut options_done = false;
     while let Some(arg) = args.next() {
-        let arg = arg.to_str().ok_or("options must be UTF-8")?;
-        let mut value = || {
-            args.next()
-                .and_then(|value| value.into_string().ok())
-                .ok_or_else(|| format!("{arg} requires a UTF-8 value"))
-        };
-        match arg {
+        if options_done || arg == "-" || !arg.starts_with('-') {
+            positional.push(arg);
+            continue;
+        }
+        let mut value =
+            || args.next().ok_or_else(|| format!("{arg} requires a value"));
+        match arg.as_str() {
+            "--" => options_done = true,
             "-h" | "--help" => return Ok(None),
-            "-l" | "--lines" => options.ranges = line_ranges(&value()?)?,
-            "-m" | "--match" => pattern = Some(value()?),
+            "-e" | "--regexp" => patterns.push(value()?),
+            "-l" | "--lines" => options.ranges.extend(line_ranges(&value()?)?),
             "-r" | "--replace" => options.replacement = Some(value()?),
-            "-I" | "--ignore-case" => ignore_case = true,
+            "-i" | "--ignore-case" => case = Case::Insensitive,
+            "-S" | "--smart-case" => case = Case::Smart,
+            "-s" | "--case-sensitive" => case = Case::Sensitive,
             "-F" | "--fixed-strings" => options.fixed = true,
             "-v" | "--invert-match" => options.invert = true,
             "-o" | "--only-matching" => options.only = true,
@@ -62,49 +76,89 @@ fn parse() -> Result<Option<Options>, String> {
                 has_context = true;
                 options.context = count(&value()?)?;
             }
-            "-S" | "--sort" => options.sort = true,
-            "-U" | "--uniq" => options.uniq = true,
+            "--sort" => options.sort = true,
+            "--unique" => options.uniq = true,
             "-L" | "--limit" => options.limit = Some(count(&value()?)?),
-            "-M" | "--max-count" => {
+            "-m" | "--max-count" => {
                 options.max_matches = Some(count(&value()?)?)
             }
-            "-X" | "--multiline" => options.multiline = true,
+            "-U" | "--multiline" => options.multiline = true,
+            "-k" | "--passthru" | "--passthrough" => options.passthru = true,
             "-n" | "--line-number" => options.line_numbers = true,
             "-N" | "--no-line-number" => options.line_numbers = false,
             "--no-stats" => options.stats = false,
             _ => return Err(format!("unknown option {arg:?} (see --help)")),
         }
     }
-    if pattern.is_none()
-        && (ignore_case
+    if options.ranges.is_empty() {
+        options.ranges.push(LineRange { from: 1, to: None });
+    }
+    let mut positional = positional.into_iter();
+    if patterns.is_empty() {
+        patterns.extend(positional.next());
+    }
+    if let Some(extra) = positional.next() {
+        return Err(format!(
+            "unexpected argument {extra:?}: lsel reads stdin only (e.g. lsel PATTERN <FILE); use -e for more patterns"
+        ));
+    }
+    if patterns.is_empty()
+        && (!matches!(case, Case::Sensitive)
             || options.fixed
             || options.only
             || options.invert
             || has_context
             || options.max_matches.is_some()
             || options.multiline
+            || options.passthru
             || options.replacement.is_some())
     {
-        return Err("-I, -F, -v, -C, -r, -o, -M and -X require -m".into());
+        return Err(
+            "-i, -S, -F, -v, -C, -r, -o, -m, -U and --passthru require a PATTERN".into()
+        );
     }
     if options.only && (options.invert || has_context) {
         return Err("-o cannot be combined with -v or -C".into());
     }
-    if options.replacement.is_some() && (options.invert || has_context) {
-        return Err("-r cannot be combined with -v or -C".into());
+    if options.passthru && (options.only || options.invert || has_context) {
+        return Err("--passthru cannot be combined with -o, -v or -C".into());
     }
-    if options.multiline && has_context {
-        return Err("-X cannot be combined with -C".into());
+    if options.multiline
+        && options.replacement.is_some()
+        && !options.passthru
+        && (options.invert || has_context)
+    {
+        return Err("-U -r cannot be combined with -v or -C".into());
     }
-    if let Some(pattern) = pattern {
+    if !patterns.is_empty() {
+        let ignore_case = match case {
+            Case::Sensitive => false,
+            Case::Insensitive => true,
+            Case::Smart => !patterns
+                .iter()
+                .any(|pattern| pattern.chars().any(char::is_uppercase)),
+        };
         let pattern = if options.fixed {
-            regex::escape(&pattern)
+            patterns
+                .iter()
+                .map(|p| regex::escape(p))
+                .collect::<Vec<_>>()
+        } else {
+            patterns
+        };
+        let pattern = if pattern.len() == 1 {
+            pattern.into_iter().next().unwrap()
         } else {
             pattern
+                .iter()
+                .map(|p| format!("(?:{p})"))
+                .collect::<Vec<_>>()
+                .join("|")
         };
         options.pattern = Some(
             RegexBuilder::new(&pattern)
                 .case_insensitive(ignore_case)
+                .multi_line(options.multiline)
                 .build()
                 .map_err(|error| error.to_string())?,
         );
@@ -121,16 +175,19 @@ fn line_ranges(value: &str) -> Result<Vec<LineRange>, String> {
     value
         .split(',')
         .map(|range| {
-            let sign_length = usize::from(range.starts_with('-'));
-            let (from, to) = match range[sign_length..].find('-') {
-                Some(separator) => {
-                    let (from, end) = range.split_at(sign_length + separator);
-                    let to = match &end[1..] {
-                        "" => None,
-                        end => Some(line_number(end)?),
-                    };
-                    (line_number(from)?, to)
-                }
+            let (from, to) = match range.split_once("..") {
+                Some((from, to)) => (
+                    if from.is_empty() {
+                        1
+                    } else {
+                        line_number(from)?
+                    },
+                    if to.is_empty() {
+                        None
+                    } else {
+                        Some(line_number(to)?)
+                    },
+                ),
                 None => {
                     let number = line_number(range)?;
                     (number, Some(number))
@@ -259,17 +316,18 @@ struct Filter<'a> {
     before: VecDeque<Line>,
     after: usize,
     matches_left: usize,
-    block: String,
-    block_start: usize,
+    block: Vec<Line>,
     stats: Stats,
 }
 
 impl Filter<'_> {
     fn selection_complete(&self) -> bool {
-        self.matches_left == 0
+        !self.options.multiline
+            && self.matches_left == 0
             && self.after == 0
-            && (self.options.replacement.is_none() || self.options.only)
+            && !self.options.passthru
     }
+
     fn accept(
         &mut self,
         record: String,
@@ -277,14 +335,21 @@ impl Filter<'_> {
         output: &mut Output<impl Write>,
     ) -> io::Result<bool> {
         if self.options.multiline {
-            if self.block_start == 0 {
-                self.block_start = number;
-            }
-            self.block.push_str(&record);
+            self.block.push(Line {
+                text: record,
+                number,
+                context: false,
+            });
             return Ok(true);
         }
         self.line(record, number, output)
     }
+
+    fn gap(&mut self) {
+        self.before.clear();
+        self.after = 0;
+    }
+
     fn line(
         &mut self,
         record: String,
@@ -297,72 +362,83 @@ impl Filter<'_> {
             number,
             context: false,
         };
-        let line_count = if options.multiline {
-            line.text.split_inclusive('\n').count()
-        } else {
-            1
-        };
-        self.stats.scanned += line_count;
+        self.stats.scanned += 1;
         let Some(pattern) = &options.pattern else {
             return output.emit(line);
         };
-        let (content, ending) = if options.multiline {
-            (line.text.as_str(), "")
-        } else {
-            split_line(&line.text)
-        };
+        let (content, ending) = split_line(&line.text);
         let matched = pattern.is_match(content);
-        self.stats.matched += usize::from(matched) * line_count;
+        self.stats.matched += usize::from(matched);
         if options.only {
-            for captures in
-                pattern.captures_iter(content).take(self.matches_left)
-            {
+            let content = content.to_owned();
+            return self.only(&content, |_| number, output);
+        }
+        if options.passthru {
+            line.context = !(matched && self.matches_left > 0);
+            if !line.context {
                 self.matches_left -= 1;
-                let mut expanded = String::new();
-                match &options.replacement {
-                    Some(replacement) if options.fixed => {
-                        expanded.push_str(replacement);
-                    }
-                    Some(replacement) => {
-                        captures.expand(replacement, &mut expanded);
-                    }
-                    None => expanded.push_str(&captures[0]),
+                if let Some(replacement) = &options.replacement {
+                    let mut rewritten = expand_all(options, content, replacement);
+                    rewritten.push_str(ending);
+                    line.text = rewritten;
                 }
-                expanded.push('\n');
+            }
+            return output.emit(line);
+        }
+        if let Some(replacement) = &options.replacement
+            && matched
+            && !options.invert
+        {
+            let mut rewritten = expand_all(options, content, replacement);
+            rewritten.push_str(ending);
+            line.text = rewritten;
+        }
+        self.select(line, matched, output)
+    }
+
+    fn only(
+        &mut self,
+        text: &str,
+        number_at: impl Fn(usize) -> usize,
+        output: &mut Output<impl Write>,
+    ) -> io::Result<bool> {
+        let options = self.options;
+        let pattern = options.pattern.as_ref().expect("-o requires a pattern");
+        for captures in pattern.captures_iter(text).take(self.matches_left) {
+            self.matches_left -= 1;
+            let mut expanded = String::new();
+            match &options.replacement {
+                Some(replacement) if options.fixed => {
+                    expanded.push_str(replacement);
+                }
+                Some(replacement) => {
+                    captures.expand(replacement, &mut expanded);
+                }
+                None => expanded.push_str(&captures[0]),
+            }
+            let first = number_at(captures.get(0).map_or(0, |m| m.start()));
+            let body = expanded.strip_suffix('\n').unwrap_or(&expanded);
+            for (index, part) in body.split('\n').enumerate() {
                 if !output.emit(Line {
-                    text: expanded,
-                    number,
+                    text: format!("{part}\n"),
+                    number: first + index,
                     context: false,
                 })? {
                     return Ok(false);
                 }
             }
-            return Ok(true);
         }
-        if let Some(replacement) = &options.replacement {
-            if matched && self.matches_left > 0 {
-                let limit = if options.max_matches.is_some() {
-                    let count = pattern
-                        .find_iter(content)
-                        .take(self.matches_left)
-                        .count();
-                    self.matches_left -= count;
-                    count
-                } else {
-                    0
-                };
-                let mut rewritten = if options.fixed {
-                    pattern.replacen(content, limit, NoExpand(replacement))
-                } else {
-                    pattern.replacen(content, limit, replacement.as_str())
-                }
-                .into_owned();
-                rewritten.push_str(ending);
-                line.text = rewritten;
-                return output.emit(line);
-            }
-            return output.emit(line);
-        }
+        Ok(true)
+    }
+
+    // Applies -v, -m and -C to one line whose match result is known.
+    fn select(
+        &mut self,
+        mut line: Line,
+        matched: bool,
+        output: &mut Output<impl Write>,
+    ) -> io::Result<bool> {
+        let options = self.options;
         if matched != options.invert && self.matches_left > 0 {
             self.matches_left -= 1;
             self.after = options.context;
@@ -383,6 +459,138 @@ impl Filter<'_> {
                 self.before.pop_front();
             }
             self.before.push_back(line);
+        }
+        Ok(true)
+    }
+
+    // -U: search the selected lines as one text, like rg --multiline.
+    fn finish_block(
+        &mut self,
+        output: &mut Output<impl Write>,
+    ) -> io::Result<bool> {
+        let options = self.options;
+        let records = std::mem::take(&mut self.block);
+        if records.is_empty() {
+            return Ok(true);
+        }
+        let pattern = options.pattern.as_ref().expect("-U requires a pattern");
+        let mut text = String::new();
+        let mut starts = Vec::with_capacity(records.len());
+        for record in &records {
+            starts.push(text.len());
+            text.push_str(&record.text);
+        }
+        let line_of = |offset: usize| {
+            starts.partition_point(|&start| start <= offset).max(1) - 1
+        };
+        self.stats.scanned += records.len();
+        if options.only {
+            let mut matched = vec![false; records.len()];
+            for found in pattern.find_iter(&text) {
+                let last = line_of(found.end().max(found.start() + 1) - 1);
+                matched[line_of(found.start())..=last].fill(true);
+            }
+            self.stats.matched += matched.iter().filter(|&&m| m).count();
+            return self.only(&text, |at| records[line_of(at)].number, output);
+        }
+        // Matches touching the same lines form one group; -m counts groups.
+        let limit = if options.invert {
+            usize::MAX
+        } else {
+            std::mem::replace(&mut self.matches_left, usize::MAX)
+        };
+        let mut groups: Vec<(usize, usize, Vec<regex::Captures>)> = Vec::new();
+        for captures in pattern.captures_iter(&text) {
+            let found = captures.get(0).expect("group 0 always matches");
+            let first = line_of(found.start());
+            let last = line_of(found.end().max(found.start() + 1) - 1);
+            let full = groups.len() == limit;
+            match groups.last_mut() {
+                Some(group) if first <= group.1 => {
+                    group.1 = group.1.max(last);
+                    group.2.push(captures);
+                }
+                _ if full => break,
+                _ => groups.push((first, last, vec![captures])),
+            }
+        }
+        self.stats.matched += groups
+            .iter()
+            .map(|(first, last, _)| last - first + 1)
+            .sum::<usize>();
+        if let Some(replacement) = &options.replacement
+            && !options.invert
+        {
+            let mut cursor = 0;
+            for (first, last, matches) in groups {
+                if options.passthru {
+                    for record in &records[cursor..first] {
+                        if !output.emit(Line {
+                            text: record.text.clone(),
+                            number: record.number,
+                            context: true,
+                        })? {
+                            return Ok(false);
+                        }
+                    }
+                }
+                cursor = last + 1;
+                let end = starts.get(last + 1).copied().unwrap_or(text.len());
+                let mut position = starts[first];
+                let mut rewritten = String::new();
+                for captures in matches {
+                    let found =
+                        captures.get(0).expect("group 0 always matches");
+                    rewritten.push_str(&text[position..found.start()]);
+                    if options.fixed {
+                        rewritten.push_str(replacement);
+                    } else {
+                        captures.expand(replacement, &mut rewritten);
+                    }
+                    position = found.end();
+                }
+                rewritten.push_str(&text[position..end]);
+                if !output.emit(Line {
+                    text: rewritten,
+                    number: records[first].number,
+                    context: false,
+                })? {
+                    return Ok(false);
+                }
+            }
+            if options.passthru {
+                for mut record in records.into_iter().skip(cursor) {
+                    record.context = true;
+                    if !output.emit(record)? {
+                        return Ok(false);
+                    }
+                }
+            }
+            return Ok(true);
+        }
+        let mut matched = vec![false; records.len()];
+        for (first, last, _) in &groups {
+            matched[*first..=*last].fill(true);
+        }
+        let mut previous = 0;
+        for (mut record, matched) in records.into_iter().zip(matched) {
+            if options.passthru {
+                record.context = !matched;
+                if !output.emit(record)? {
+                    return Ok(false);
+                }
+                continue;
+            }
+            if previous + 1 < record.number {
+                self.gap();
+            }
+            previous = record.number;
+            if !self.select(record, matched, output)? {
+                return Ok(false);
+            }
+            if self.matches_left == 0 && self.after == 0 {
+                break;
+            }
         }
         Ok(true)
     }
@@ -460,8 +668,7 @@ fn select(
             break;
         };
         if previous + 1 < number {
-            filter.before.clear();
-            filter.after = 0;
+            filter.gap();
         }
         if filter.selection_complete() {
             break;
@@ -494,8 +701,7 @@ fn run(options: Options) -> io::Result<()> {
         before: VecDeque::new(),
         after: 0,
         matches_left: options.max_matches.unwrap_or(usize::MAX),
-        block: String::new(),
-        block_start: 0,
+        block: Vec::new(),
         stats: Stats::default(),
     };
     let mut output = Output {
@@ -512,9 +718,8 @@ fn run(options: Options) -> io::Result<()> {
     };
     let mut complete =
         select(&options, io::stdin().lock(), &mut filter, &mut output)?;
-    if complete && filter.block_start != 0 {
-        let block = std::mem::take(&mut filter.block);
-        complete = filter.line(block, filter.block_start, &mut output)?;
+    if complete {
+        complete = filter.finish_block(&mut output)?;
     }
     let complete = complete && output.finish()?;
     output.writer.flush()?;
@@ -562,4 +767,77 @@ fn main() -> std::process::ExitCode {
             std::process::ExitCode::FAILURE
         }
     }
+}
+
+// Expands rg-style forms: -C1, -in, -m1 and --context=1.
+fn split_args(
+    args: impl Iterator<Item = std::ffi::OsString>,
+) -> Result<Vec<String>, String> {
+    const SHORT_VALUE: &str = "elrCLm";
+    const LONG_VALUE: &[&str] = &[
+        "regexp",
+        "lines",
+        "replace",
+        "context",
+        "limit",
+        "max-count",
+    ];
+    let mut out = Vec::new();
+    let mut args = args.map(|arg| {
+        arg.into_string()
+            .map_err(|_| "arguments must be UTF-8".to_owned())
+    });
+    while let Some(arg) = args.next() {
+        let arg = arg?;
+        if arg == "--" {
+            out.push(arg);
+            for rest in args.by_ref() {
+                out.push(rest?);
+            }
+            break;
+        }
+        if let Some(long) = arg.strip_prefix("--") {
+            match long.split_once('=') {
+                Some((name, value)) => {
+                    out.push(format!("--{name}"));
+                    out.push(value.to_owned());
+                }
+                None => {
+                    let takes_value = LONG_VALUE.contains(&long);
+                    out.push(arg);
+                    if takes_value && let Some(value) = args.next() {
+                        out.push(value?);
+                    }
+                }
+            }
+            continue;
+        }
+        let Some(short) = arg.strip_prefix('-').filter(|s| s.len() > 1) else {
+            out.push(arg);
+            continue;
+        };
+        for (index, flag) in short.char_indices() {
+            out.push(format!("-{flag}"));
+            if SHORT_VALUE.contains(flag) {
+                let rest = &short[index + flag.len_utf8()..];
+                if !rest.is_empty() {
+                    out.push(rest.to_owned());
+                } else if let Some(value) = args.next() {
+                    out.push(value?);
+                }
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn expand_all(options: &Options, text: &str, replacement: &str) -> String {
+    let pattern = options.pattern.as_ref().expect("-r requires a pattern");
+    if options.fixed {
+        pattern.replace_all(text, NoExpand(replacement))
+    } else {
+        pattern.replace_all(text, replacement)
+    }
+    .into_owned()
 }

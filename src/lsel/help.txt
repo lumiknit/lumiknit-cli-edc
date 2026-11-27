@@ -1,45 +1,47 @@
-Stdin only (e.g. lsel <FILE).
-Order: range → match/context or replace → sort → uniq → byte cap.
-Usage: lsel [-l LIST] [-m PATTERN] [-F] [-I] [-v] [-C N] [-r TEXT] [-o] [-n|-N] [-S] [-U] [-M N] [-X] [-L BYTES] [--no-stats] [-h]
--l cut-style ranges (1-5,12,20-); from end: -9--5, -5-.
--m regex, -F literal, -I ignore case, -v invert, -C context, -r replace ($1 capture, '' delete), -o matches/replacements only, -M cap matches/edits, -X multiline.
--n/-N line numbers on/off, -S sort, -U drop adjacent duplicates, -L byte cap, --no-stats hide stderr summary.
+Stdin-only rg-like line filter: lsel [OPTIONS] [PATTERN] <FILE
+As rg: -e PAT... -F -i -S -v -C N -r TEXT -o -m N -U -n/-N --passthru
+Extra: -l 1..5,12,-5.. (1-based, inclusive, negative=from end), --sort, --unique, -L BYTES, --no-stats
+Order: lines → match/replace → sort → unique → byte cap
 
-  -l, --lines <list>         Select line ranges (e.g. 1-5,12,20-)
-  -m, --match <pattern>      Select matching lines
+  -e, --regexp <pattern>...  Pattern; repeat to OR (use for patterns starting with -)
+  -l, --lines <list>...      Select line ranges; repeat to add more
   -F, --fixed-strings        Treat the pattern and replacement as literal text
-  -I, --ignore-case          Ignore case
+  -i, --ignore-case          Ignore case
+  -S, --smart-case           Ignore case if the pattern has no uppercase
+  -s, --case-sensitive       Match case (default; last case flag wins)
   -v, --invert-match         Select nonmatching lines
   -C, --context <lines>      Include N lines of context
-  -r, --replace <text>       Replace matches, keep other text
+  -r, --replace <text>       Replace matches in printed lines
   -o, --only-matching        Emit each match or replacement separately
-  -n, --line-number         Prefix original line numbers
-  -N, --no-line-number      Omit line numbers
-  -S, --sort                 Sort lines lexically
-  -U, --uniq                 Drop adjacent duplicate lines
-  -M, --max-count <count>   Cap matches or edits at N
-  -X, --multiline           Match selected lines as one block
-  -L, --limit <bytes>       Cap stdout bytes at a UTF-8 boundary
+  -k, --passthru             Print all lines too (sed-like with -r)
+  -m, --max-count <count>    Cap matching lines at N
+  -U, --multiline            Let matches span lines
+  -n, --line-number          Prefix original line numbers
+  -N, --no-line-number       Omit line numbers
+      --sort                 Sort lines lexically
+      --unique               Drop adjacent duplicate lines
+  -L, --limit <bytes>        Cap stdout bytes at a UTF-8 boundary
       --no-stats             Suppress the stderr summary
   -h, --help                 Show help
 
-Ranges are inclusive and 1-based. Negative indices count from EOF (-1 is last).
-Range starts are required. A single number selects one line. Overlapping
-ranges select each line once, in input order. Reversed ranges select no lines.
--I, -F, -v, -C, -r, -o, -M and -X require -m.
--r and -o cannot be combined with -v or -C.
--M counts across selected lines before sorting or deduplication.
-With -v it counts selected nonmatching records. With -r or -o it counts
-individual matches. Zero selects no records or changes no text.
--X buffers the selected lines, concatenating them across gaps. It cannot be
-combined with -C and uses the first selected line number for output. A
-matching block counts all its lines in the stats.
-Use a literal newline or a regex newline escape to match across lines.
-In regex mode, (?s) lets dot match newlines and (?m) lets ^ and $ match
-individual line boundaries.
+lsel never opens files. Only one positional PATTERN is accepted; with -e no
+positional is allowed. -- ends options. Short options can be bundled
+(-in, -C1) and long values can use = (--context=1), as in rg.
+Ranges: a..b, a.., ..b or a single n. Overlapping ranges select each line
+once, in input order. Reversed ranges select no lines.
+-i, -S, -F, -v, -C, -r, -o, -m, -U and -k require a PATTERN.
+-o cannot be combined with -v or -C; -k cannot be combined with -o, -v or -C.
+--passthrough is an alias of --passthru.
+-m counts matching lines (with -U, groups of lines touched by matches; with
+-o, individual matches) before sorting or deduplication. Zero selects
+nothing. With -k, lines past the cap are printed unchanged.
+-U searches the selected lines as one text, as rg --multiline does: lines
+touched by a match are printed, ^ and $ match at line boundaries, and (?s)
+lets dot match newlines. -U -r cannot be combined with -v or -C.
+Gaps between ranges are concatenated.
 Patterns and replacements follow Rust regex / rg syntax ($1, ${1}suffix,
 ${name}, $$). Invalid UTF-8 input is replaced with U+FFFD.
-Negative indices and sorting buffer in memory.
+Negative indices, -U and sorting buffer in memory.
 Terminal stdin shows brief usage. Terminal stdout enables line numbers.
 With context, separated groups use -- unless sorting is enabled.
 Line number prefixes and group separators count toward the output cap.
